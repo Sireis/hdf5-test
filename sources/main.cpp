@@ -17,7 +17,8 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum);
 
 int main(void)
 {
-    const int readSize = 1024*1024;
+    //const int readSize = 1024*1024;
+    const int readSize = 1024;
     H5::H5File file("assets/datasets/ap_one_node_capture.hdf5", H5F_ACC_RDONLY);
     H5::DataSet dataset = file.openDataSet("log_data");
     H5::DataType dataType = dataset.getDataType();
@@ -25,7 +26,7 @@ int main(void)
     hsize_t count[1];
     hsize_t offset[1];
     count[0] = readSize;
-    offset[0] = 0;
+    offset[0] = 1314;
     H5::DataSpace dataSpace = dataset.getSpace();
     dataSpace.selectHyperslab(H5S_SELECT_SET, count, offset);
 
