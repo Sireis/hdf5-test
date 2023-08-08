@@ -31,6 +31,7 @@ endif ()
 # Add your project's source files
 set(SOURCES
     sources/main.cpp
+    sources/test.cpp
 )
 
 # Create the executable
