@@ -47,7 +47,7 @@ bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *dimensions, hsize_t *o
             if (x >= offset[0] && x < (offset[0] + size[0])
             &&  y >= offset[1] && y < (offset[1] + size[1]))
             {
-                volatile size_t index = x + y*dimensions[0];
+                volatile size_t index = x + y*size[0];
                 volatile uint64_t value = ((uint64_t)counter << 32) | (x << 16) | (y << 0);
 
                 if (buffer[index] != value)
