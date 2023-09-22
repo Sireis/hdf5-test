@@ -1,4 +1,6 @@
 build/
+binary/
+assets/datasets/generated/
 .vscode/
 
 # Prerequisites
@@ -33,3 +35,4 @@ build/
 *.exe
 *.out
 *.app
+
