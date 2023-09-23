@@ -4,6 +4,32 @@
 
 #include <string>
 #include <cstdint>
+#include <filesystem>
+
+H5::H5File useTestFile(int rank, hsize_t* dimensions)
+{
+    std::filesystem::path path("../assets/datasets/generated/");
+    std::string fileName = createFileName(rank, dimensions);
+
+    std::filesystem::create_directories(std::filesystem::path(path));
+
+    if (!std::filesystem::exists(path / fileName))
+    {
+        generateHdf5TestFile((path / fileName).string(), rank, dimensions);
+    }
+    
+    return H5::H5File((path / fileName).string(), H5F_ACC_RDONLY);
+}
+
+std::string createFileName(int rank, hsize_t* dimenions)
+{
+    std::ostringstream formatted;
+    formatted << rank << "d_"; 
+    formatted << dimenions[0];
+    formatted << dimenions[1];
+    formatted << ".hdf5";
+    return formatted.str();
+}
 
 void generateHdf5TestFile(std::string path, int rank, hsize_t* dimensions)
 {
@@ -18,6 +44,7 @@ void generateHdf5TestFile(std::string path, int rank, hsize_t* dimensions)
     H5::DataSet dataset = file.createDataSet("testData", datatype, dataspace);
     dataset.write(data.get(), H5::PredType::NATIVE_UINT64);
 }
+
 
 std::unique_ptr<uint64_t[]> generateTestData(int rank, hsize_t* dimensions)
 {   

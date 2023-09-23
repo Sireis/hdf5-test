@@ -18,12 +18,12 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum);
 
 int main(void)
 {    
-    //hsize_t dimensions[] = {16384, 16384};
-    //generateHdf5TestFile("2d_16384_16384.hdf5", 2, dimensions);
     std::filesystem::path currentDir = std::filesystem::current_path();
     std::cout << "Current working directory: " << currentDir << std::endl;
 
-    H5::H5File file("../assets/datasets/2d_16384_16384.hdf5", H5F_ACC_RDONLY);    
+    hsize_t dimensions[] = {16384, 16384};
+    H5::H5File file = useTestFile(2, dimensions);
+        
     H5::DataSet dataset = file.openDataSet("testData");
     H5::DataType dataType = dataset.getDataType();
 
