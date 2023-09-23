@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.12)
 project(hdf5-test LANGUAGES CXX)
 
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/build)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/build)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/../binary)
@@ -8,12 +11,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/../binary)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 
 # Find the HDF5 package
-# set(CMAKE_PREFIX_PATH "/usr/local/HDF_Group/HDF5/1.15.0")
-set(HDF5_ROOT "/usr/local/HDF_Group/HDF5/1.15.0")
-# set(HDF5_ROOT "/usr/local/")
+
+#set(HDF5_ROOT "/usr/local/HDF_Group/HDF5/1.15.0")
+set(HDF5_ROOT "~/hdf5")
 find_package(HDF5 COMPONENTS C CXX NO_MODULE REQUIRED shared)
-# find_package(HDF5 1.15.0 COMPONENTS CXX)
-# find_package(HDF5 1.15.0 COMPONENTS CXX HL NO_MODULE REQUIRED shared)
+
 
 # Add the include directories for HDF5
 if (HDF5_FOUND)
