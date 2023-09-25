@@ -10,40 +10,58 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/../binary)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 
-# Find the HDF5 package
-
-#set(HDF5_ROOT "/usr/local/HDF_Group/HDF5/1.15.0")
-set(HDF5_ROOT "~/hdf5")
-find_package(HDF5 COMPONENTS C CXX NO_MODULE REQUIRED shared)
-
-
-# Add the include directories for HDF5
-if (HDF5_FOUND)
-    if (HDF5_INCLUDE_DIR)
-        message(STATUS " hdf5 include directory path is: ${HDF5_INCLUDE_DIR}")
-        include_directories(${HDF5_INCLUDE_DIR})
-    else ()
-        message(WARNING " hdf5 include directory path is empty")
-        include_directories(${HDF5_ROOT}/include())
-    endif ()
-else ()
-    message ("HDF5 library not found")
-endif ()
-
-# Add your project's source files
 set(SOURCES
     sources/main.cpp
     sources/test.cpp
 )
 
-# Create the executable
-add_executable(${PROJECT_NAME} ${SOURCES})
+set(LIBRARIES_ROOT "~/libraries/")
+set(HDF5_CPP_LIBRARY_FILE "libhdf5_cpp.so")
+set(HDF5_LIBRARY_FILE "libhdf5.so")
 
-if (HDF5_CXX_SHARED_LIBRARY)
-    message(STATUS " hdf5 lib is: ${HDF5_CXX_SHARED_LIBRARY}")
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${HDF5_CXX_SHARED_LIBRARY})
-else ()
-    message(WARNING " hdf5 lib directory path is empty")
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${HDF5_ROOT}/lib)
-endif ()
-# Link against the HDF5 libraries
+
+set(HDF5_VARIANT "hdf5_no_staging")
+
+set(HDF5_PATH "${LIBRARIES_ROOT}${HDF5_VARIANT}")
+set(HDF5_INCLUDE_DIR "${HDF5_PATH}/include")
+set(HDF5_CPP_OBJECT "${HDF5_PATH}/lib/${HDF5_CPP_LIBRARY_FILE}")
+set(HDF5_OBJECT "${HDF5_PATH}/lib/${HDF5_LIBRARY_FILE}")
+
+set(CMAKE_INSTALL_RPATH ${HDF5_PATH})
+set(CMAKE_BUILD_RPATH ${HDF5_PATH})
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+include_directories(${HDF5_INCLUDE_DIR})
+add_executable(${PROJECT_NAME}_${HDF5_VARIANT} ${SOURCES})
+target_link_libraries(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ${HDF5_CPP_OBJECT} ${HDF5_OBJECT})
+
+
+set(HDF5_VARIANT "hdf5_staging_memory_optimized")
+set(HDF5_PATH "${LIBRARIES_ROOT}${HDF5_VARIANT}")
+set(HDF5_INCLUDE_DIR "${HDF5_PATH}/include")
+set(HDF5_CPP_OBJECT "${HDF5_PATH}/lib/${HDF5_CPP_LIBRARY_FILE}")
+set(HDF5_OBJECT "${HDF5_PATH}/lib/${HDF5_LIBRARY_FILE}")
+
+set(CMAKE_INSTALL_RPATH ${HDF5_PATH})
+set(CMAKE_BUILD_RPATH ${HDF5_PATH})
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+include_directories(${HDF5_INCLUDE_DIR})
+add_executable(${PROJECT_NAME}_${HDF5_VARIANT} ${SOURCES})
+target_link_libraries(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ${HDF5_CPP_OBJECT} ${HDF5_OBJECT})
+
+
+set(HDF5_VARIANT "hdf5_staging_disk_optimized")
+
+set(HDF5_PATH "${LIBRARIES_ROOT}${HDF5_VARIANT}")
+set(HDF5_INCLUDE_DIR "${HDF5_PATH}/include")
+set(HDF5_CPP_OBJECT "${HDF5_PATH}/lib/${HDF5_CPP_LIBRARY_FILE}")
+set(HDF5_OBJECT "${HDF5_PATH}/lib/${HDF5_LIBRARY_FILE}")
+
+set(CMAKE_INSTALL_RPATH ${HDF5_PATH})
+set(CMAKE_BUILD_RPATH ${HDF5_PATH})
+set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+
+include_directories(${HDF5_INCLUDE_DIR})
+add_executable(${PROJECT_NAME}_${HDF5_VARIANT} ${SOURCES})
+target_link_libraries(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ${HDF5_CPP_OBJECT} ${HDF5_OBJECT})
