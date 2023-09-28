@@ -3,6 +3,8 @@
 #include <cstring>
 #include <chrono>
 #include <vector>
+#include <algorithm>
+#include <numeric>
 #include <math.h>
 #include <filesystem>
 
@@ -10,43 +12,86 @@
 
 using namespace std::chrono;
 
-void profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace);
+struct DataSpace
+{
+    hsize_t offset[2];
+    hsize_t size[2];
+};
+
+struct Scenario
+{
+    std::string name;
+    DataSpace fileSpace;
+    DataSpace testSpace;
+    int repetitions;
+};
+
+std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace);
 void printAsCSV(uint8_t buffer[], size_t size);
+void printAsDat(std::string filePath, std::vector<int> list);
 std::string fill(std::string string, char filler, int count);
+void printTable(std::vector<int> &durations, hsize_t sizes[]);
 void printList(std::vector<int> &durations, int size);
 void printGraph(std::vector<int> &durations, int minimum, int maximum);
+void runScenario(Scenario scenario);
+void runScenarios(std::vector<Scenario> scenarios);
 
 int main(void)
 {    
-    std::filesystem::path currentDir = std::filesystem::current_path();
-    std::cout << "Current working directory: " << currentDir << std::endl;
+    Scenario s1 = {
+        .name = "standard",
+        .fileSpace = {
+            .offset = {0, 0},
+            .size = {16*1024, 16*1024},
+        },
+        .testSpace = {
+            .offset = {0, 0},
+            .size = {4*1024, 4*1024},
+        },
+        .repetitions = 23,
+    };
 
-    hsize_t dimensions[] = {16384, 16384};
-    H5::H5File file = useTestFile(2, dimensions);
+    std::vector<Scenario> scenarios = {s1};
+
+    runScenarios(scenarios);
+}
+
+void runScenarios(std::vector<Scenario> scenarios)
+{
+    for (Scenario s : scenarios)
+    {
+        runScenario(s);
+    }    
+}
+
+void runScenario(Scenario scenario)
+{
+    H5::H5File file = useTestFile(2, scenario.fileSpace.size);
         
     H5::DataSet dataset = file.openDataSet("testData");
     H5::DataType dataType = dataset.getDataType();
 
-    hsize_t offset[2] = {0, 0};
-    hsize_t count[2] = {4096, 4096};
     H5::DataSpace dataSpace = dataset.getSpace();
-    dataSpace.selectHyperslab(H5S_SELECT_SET, count, offset);
+    dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
 
-    H5::DataSpace memorySpace(2, count);
-    memorySpace.selectHyperslab(H5S_SELECT_SET, count, offset);
+    H5::DataSpace memorySpace(2, scenario.testSpace.size);
+    memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
 
-    std::cout << "Profiling..." << std::endl;
-    std::cout << " " << std::endl;
+    std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
 
-    //uint64_t buffer[count[0]*count[1]];
-    uint64_t* buffer = new uint64_t[count[0]*count[1]];
-    profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace);
-    
-    std::cout << " " << std::endl;
-    std::cout << "Exiting..." << std::endl;
+    uint64_t* buffer = new uint64_t[scenario.testSpace.size[0] * scenario.testSpace.size[1]];
+    auto durations = profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace);
+
+    printTable(durations, scenario.testSpace.size);
+    std::cout << std::endl;
+    printList(durations, std::min((int)durations.size(), 12));
+    std::cout << std::endl;
+    printGraph(durations, *std::min_element(durations.begin(), durations.end()), *std::max_element(durations.begin(), durations.end()));
+    std::cout << std::endl;
+    printAsDat(" ", durations);
 }
 
-void profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace)
+std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace)
 {    
     const int count = 12;
     
@@ -78,20 +123,7 @@ void profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, 
         end = steady_clock::now();
 
         microseconds duration = duration_cast<microseconds>(end - start);
-        durations.push_back(duration.count());
-        sum += duration;
-
-        if (duration < minimum)
-        {
-            minimum = duration;
-            minimumIndex = i;
-        }
-        
-        if (duration > maximum)
-        {
-            maximum = duration;
-            maximumIndex = i;
-        }        
+        durations.push_back(duration.count());   
         
         bool isOkay = verifyBuffer((uint64_t*)buffer, 2, dimensions, offset, size);
         if (!isOkay)
@@ -100,24 +132,7 @@ void profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, 
         }
     }
 
-    microseconds average = sum / count;
-
-    size_t bytes = size[0] * size[1] * 8;
-    float throughputMinimum = bytes / (minimum.count() / 1e+6) / 1024 / 1024;
-    float throughputAverage = bytes / (average.count() / 1e+6) / 1024 / 1024;
-    float throughputMaximum = bytes / (maximum.count() / 1e+6) / 1024 / 1024;
-
-    std::cout << "+---------------- dataset.read(...) ----------------+" << std::endl;
-    std::cout << "| repetitions:    " << fill(std::to_string(count), ' ', 6) << fill(" ", ' ', 28) << "|" << std::endl;
-    std::cout << "| minimum time:   " << fill(std::to_string(minimum.count()), ' ', 6) << " µs @ " << fill(std::to_string(minimumIndex), ' ', 7) << "   " << round(throughputMinimum) << " MiB/s  " << "|" << std::endl;
-    std::cout << "| average time:   " << fill(std::to_string(average.count()), ' ', 6) << " µs " << fill(" ", ' ', 9) << "   " << round(throughputAverage) << " MiB/s  " << "|" << std::endl;
-    std::cout << "| maximum time:   " << fill(std::to_string(maximum.count()), ' ', 6) << " µs @ " << fill(std::to_string(maximumIndex), ' ', 8) << "   " << round(throughputMaximum) << " MiB/s  " << "|" << std::endl;
-    std::cout << "+---------------------------------------------------+" << std::endl;
-
-    std::cout << std::endl;
-    printList(durations, 11);
-    std::cout << std::endl;
-    printGraph(durations, minimum.count(), maximum.count());
+    return durations;
 }
 
 void printAsCSV(uint8_t buffer[], size_t size)
@@ -128,18 +143,50 @@ void printAsCSV(uint8_t buffer[], size_t size)
     }    
 }
 
+void printAsDat(std::string filePath, std::vector<int> list)
+{
+    for (int i = 0; i < list.size(); ++i)
+    {
+        std::cout << i << " " << list[i] << std::endl;
+    }
+}
+
 std::string fill(std::string string, char filler, int count)
 {
     return string + std::string(count - string.length(), filler);
 }
 
+void printTable(std::vector<int> &durations, hsize_t sizes[])
+{
+
+    int average = std::accumulate(durations.begin(), durations.end(), 0) / durations.size();
+    auto minimumIterator = std::min_element(durations.begin(), durations.end());
+    int minimumIndex = std::distance(durations.begin(), minimumIterator);
+    int minimum = *minimumIterator;
+    auto maximumIterator = std::max_element(durations.begin(), durations.end());
+    int maximumIndex = std::distance(durations.begin(), maximumIterator);
+    int maximum = *maximumIterator;
+
+    size_t bytes = sizes[0] * sizes[1] * 8;
+    float throughputMinimum = bytes / (minimum / 1e+6) / 1024 / 1024;
+    float throughputAverage = bytes / (average / 1e+6) / 1024 / 1024;
+    float throughputMaximum = bytes / (maximum / 1e+6) / 1024 / 1024;
+
+    std::cout << "+---------------- dataset.read(...) ----------------+" << std::endl;
+    std::cout << "| repetitions:    " << fill(std::to_string(durations.size()), ' ', 6) << fill(" ", ' ', 28) << "|" << std::endl;
+    std::cout << "| minimum time:   " << fill(std::to_string(minimum), ' ', 6) << " µs @ " << fill(std::to_string(minimumIndex), ' ', 7) << "   " << round(throughputMinimum) << " MiB/s  " << "|" << std::endl;
+    std::cout << "| average time:   " << fill(std::to_string(average), ' ', 6) << " µs " << fill(" ", ' ', 9) << "   " << round(throughputAverage) << " MiB/s  " << "|" << std::endl;
+    std::cout << "| maximum time:   " << fill(std::to_string(maximum), ' ', 6) << " µs @ " << fill(std::to_string(maximumIndex), ' ', 8) << "   " << round(throughputMaximum) << " MiB/s  " << "|" << std::endl;
+    std::cout << "+---------------------------------------------------+" << std::endl;
+}
+
 void printList(std::vector<int> &durations, int size)
 {
-    for (size_t i = 0; i < size - 1; i++)
+    for (size_t i = 0; i < size - 2; i++)
     {
         std::cout << durations[i] << " µs, ";
     }
-    std::cout << durations[size] << " µs" << std::endl;    
+    std::cout << durations[size - 1] << " µs" << std::endl;    
 }
 
 void printGraph(std::vector<int> &durations, int minimum, int maximum)

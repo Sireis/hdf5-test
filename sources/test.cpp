@@ -26,6 +26,7 @@ std::string createFileName(int rank, hsize_t* dimenions)
     std::ostringstream formatted;
     formatted << rank << "d_"; 
     formatted << dimenions[0];
+    formatted << "_";
     formatted << dimenions[1];
     formatted << ".hdf5";
     return formatted.str();
