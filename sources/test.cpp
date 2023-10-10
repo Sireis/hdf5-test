@@ -18,7 +18,23 @@ H5::H5File useTestFile(int rank, hsize_t* dimensions)
         generateHdf5TestFile((path / fileName).string(), rank, dimensions);
     }
     
-    return H5::H5File((path / fileName).string(), H5F_ACC_RDONLY);
+    return H5::H5File((path / fileName).string(), H5F_ACC_RDONLY); 
+}
+
+
+hid_t useTestFile(int rank, hsize_t* dimensions, hid_t fapl)
+{
+    std::filesystem::path path("../assets/datasets/generated/");
+    std::string fileName = createFileName(rank, dimensions);
+
+    std::filesystem::create_directories(std::filesystem::path(path));
+
+    if (!std::filesystem::exists(path / fileName))
+    {
+        generateHdf5TestFile((path / fileName).string(), rank, dimensions);
+    }
+        
+    return H5Fopen((path / fileName).c_str(), H5F_ACC_RDONLY, fapl);
 }
 
 std::string createFileName(int rank, hsize_t* dimenions)

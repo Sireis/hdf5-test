@@ -1,4 +1,8 @@
 #include "H5Cpp.h"
+#include "hdf5.h"
+#include "H5VLcache_ext.h"
+#include "H5FDmpio.h"
+
 #include <iostream>
 #include <cstring>
 #include <chrono>
@@ -12,6 +16,11 @@
 
 using namespace std::chrono;
 
+enum class Hdf5Api {
+    CppApi,
+    CApi,
+};
+
 struct DataSpace
 {
     hsize_t offset[2];
@@ -21,12 +30,14 @@ struct DataSpace
 struct Scenario
 {
     std::string name;
+    Hdf5Api hdf5Api;
     DataSpace fileSpace;
     DataSpace testSpace;
     int repetitions;
 };
 
 std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace);
+std::vector<int> profiledRead(uint8_t buffer[], hid_t dataset, hid_t dataType, hid_t memorySpace, hid_t dataSpace);
 void printAsCSV(uint8_t buffer[], size_t size);
 void printAsDat(std::string filePath, std::vector<int> list);
 std::string fill(std::string string, char filler, int count);
@@ -34,12 +45,14 @@ void printTable(std::vector<int> &durations, hsize_t sizes[]);
 void printList(std::vector<int> &durations, int size);
 void printGraph(std::vector<int> &durations, int minimum, int maximum);
 void runScenario(Scenario scenario);
+void runScenarioC(Scenario scenario);
 void runScenarios(std::vector<Scenario> scenarios);
 
 int main(void)
 {    
     Scenario s1 = {
         .name = "standard",
+        .hdf5Api = Hdf5Api::CApi,
         .fileSpace = {
             .offset = {0, 0},
             .size = {16*1024, 16*1024},
@@ -48,7 +61,7 @@ int main(void)
             .offset = {0, 0},
             .size = {4*1024, 4*1024},
         },
-        .repetitions = 23,
+        .repetitions = 12,
     };
 
     std::vector<Scenario> scenarios = {s1};
@@ -60,7 +73,14 @@ void runScenarios(std::vector<Scenario> scenarios)
 {
     for (Scenario s : scenarios)
     {
-        runScenario(s);
+        if (s.hdf5Api == Hdf5Api::CppApi)
+        {
+            runScenario(s);
+        }
+        else if (s.hdf5Api == Hdf5Api::CApi)
+        {
+            runScenarioC(s);
+        }
     }    
 }
 
@@ -76,6 +96,45 @@ void runScenario(Scenario scenario)
 
     H5::DataSpace memorySpace(2, scenario.testSpace.size);
     memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+
+    std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
+
+    uint64_t* buffer = new uint64_t[scenario.testSpace.size[0] * scenario.testSpace.size[1]];
+    auto durations = profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace);
+
+    printTable(durations, scenario.testSpace.size);
+    std::cout << std::endl;
+    printList(durations, std::min((int)durations.size(), 12));
+    std::cout << std::endl;
+    printGraph(durations, *std::min_element(durations.begin(), durations.end()), *std::max_element(durations.begin(), durations.end()));
+    std::cout << std::endl;
+    printAsDat(" ", durations);
+}
+
+void runScenarioC(Scenario scenario)
+{    
+    MPI_Comm comm = MPI_COMM_WORLD;
+    MPI_Info info = MPI_INFO_NULL;
+    int rank, nproc, provided;
+    MPI_Init_thread(NULL, NULL, MPI_THREAD_MULTIPLE, &provided);
+    MPI_Comm_size(comm, &nproc);
+    MPI_Comm_rank(comm, &rank);
+
+    hid_t fapl = H5Pcreate(H5P_FILE_ACCESS);
+    H5Pset_fapl_mpio(fapl, comm, info);
+    bool b = true;
+    H5Pset_fapl_cache(fapl, "HDF5_CACHE_RD", &b);
+
+    hid_t file = useTestFile(2, scenario.fileSpace.size, fapl);
+        
+    hid_t dataset = H5Dopen(file, "testData", fapl);
+    hid_t dataType = H5Dget_type(dataset);
+
+    hid_t dataSpace = H5Dget_space(dataset);
+    H5Sselect_hyperslab(dataSpace, H5S_SELECT_SET, scenario.testSpace.offset, NULL, scenario.testSpace.size, NULL);
+
+    hid_t memorySpace = H5Screate_simple(2, scenario.testSpace.size, NULL);
+    H5Sselect_hyperslab(memorySpace, H5S_SELECT_SET, scenario.testSpace.offset, NULL, scenario.testSpace.size, NULL);    
 
     std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
 
@@ -120,6 +179,52 @@ std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataTyp
     {
         start = steady_clock::now();
         dataset.read(buffer, dataType, memorySpace, dataSpace);
+        end = steady_clock::now();
+
+        microseconds duration = duration_cast<microseconds>(end - start);
+        durations.push_back(duration.count());   
+        
+        bool isOkay = verifyBuffer((uint64_t*)buffer, 2, dimensions, offset, size);
+        if (!isOkay)
+        {
+            std::cout << "Buffers do NOT match" << std::endl;
+        }
+    }
+
+    return durations;
+}
+
+std::vector<int> profiledRead(uint8_t buffer[], hid_t dataset, hid_t dataType, hid_t memorySpace, hid_t dataSpace)
+{    
+    const int count = 12;
+
+    hsize_t dimensions[2];
+    H5Sget_simple_extent_dims(dataSpace, dimensions, NULL);
+
+    hsize_t offset[2];
+    hsize_t dummy[2];
+    H5Sget_select_bounds(memorySpace, offset, dummy);
+
+    hsize_t size[2];
+    H5Sget_simple_extent_dims(memorySpace, size, NULL);
+
+    steady_clock::time_point start = steady_clock::now();
+    steady_clock::time_point end = steady_clock::now();
+
+    microseconds minimum(999999999999999);
+    microseconds maximum(0);
+    microseconds sum(0);
+
+    int minimumIndex = 0;
+    int maximumIndex = 0;
+
+    std::vector<int> durations;
+    durations.reserve(count);
+
+    for (size_t i = 0; i < count; i++)
+    {
+        start = steady_clock::now();
+        H5Dread(dataset, dataType, memorySpace, dataSpace, H5P_DEFAULT, buffer);
         end = steady_clock::now();
 
         microseconds duration = duration_cast<microseconds>(end - start);
