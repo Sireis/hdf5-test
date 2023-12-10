@@ -89,6 +89,10 @@ void runScenario(Scenario scenario)
     printGraph(durations, *std::min_element(durations.begin(), durations.end()), *std::max_element(durations.begin(), durations.end()));
     std::cout << std::endl;
     printAsDat(" ", durations);
+
+    hsize_t printOffset[] = {0, 0};
+    hsize_t printSize[] = {8, 8};
+    printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
 }
 
 std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace)

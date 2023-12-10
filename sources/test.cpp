@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 
 #include "test.h"
 
@@ -80,6 +81,7 @@ bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *dimensions, hsize_t *o
 
                 if (buffer[index] != value)
                 {
+                    std::cout << "[" << x << "|" << y << "]" << std::endl;
                     return false;
                 }                
             }
@@ -89,4 +91,50 @@ bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *dimensions, hsize_t *o
     }
 
     return true;
+}
+
+void printBuffer(uint64_t* buffer, size_t rank, hsize_t* dimensions, hsize_t* offset, hsize_t* size)
+{
+    int counter = 0;
+    for (int y = 0; y < dimensions[1]; y++)
+    {
+        for (int x = 0; x < dimensions[0]; x++)
+        {
+            if (x >= offset[0] && x < (offset[0] + size[0])
+            &&  y >= offset[1] && y < (offset[1] + size[1]))
+            {
+                volatile size_t index = x + y*dimensions[0];
+                volatile uint64_t expectedValue = ((uint64_t)counter << 32) | (x << 16) | (y << 0);    
+
+                uint64_t isValue = buffer[index];
+                int isX = getX(isValue);
+                int isY = getY(isValue);
+                int isCounter = getCounter(isValue);
+
+                std::cout << "(" << std::setw(3) << std::setfill('0') << isX << " | " << std::setw(3) << std::setfill('0') << isY << "): " << std::setw(5) << std::setfill('0') << isCounter << "; ";
+            }
+
+            counter++;
+        }        
+
+        if (y >= offset[1] && y < (offset[1] + size[1]))
+        {
+            std::cout << std::endl;
+        }
+    }
+}
+
+int getCounter(uint64_t value)
+{
+    return (value >> 32 ) & 0xFFFF;
+}
+
+int getX(uint64_t value)
+{
+    return (value >> 16 ) & 0xFFFF;
+}
+
+int getY(uint64_t value)
+{
+    return (value >> 0 ) & 0xFFFF;
 }
