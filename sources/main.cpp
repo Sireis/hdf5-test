@@ -1,6 +1,7 @@
 #include "H5Cpp.h"
 #include <iostream>
 #include <cstring>
+#include <cstdlib>
 #include <chrono>
 #include <vector>
 #include <algorithm>
@@ -24,6 +25,7 @@ struct Scenario
     DataSpace fileSpace;
     DataSpace testSpace;
     int repetitions;
+    int chunkSize;
 };
 
 std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace);
@@ -49,6 +51,7 @@ int main(void)
             .size = {4*1024, 4*1024},
         },
         .repetitions = 23,
+        .chunkSize = 1024,
     };
 
     std::vector<Scenario> scenarios = {s1};
@@ -66,6 +69,8 @@ void runScenarios(std::vector<Scenario> scenarios)
 
 void runScenario(Scenario scenario)
 {
+    setenv("STAGING_CHUNK_SIZE", std::to_string(scenario.chunkSize).c_str(), 1);
+
     H5::H5File file = useTestFile(2, scenario.fileSpace.size);
         
     H5::DataSet dataset = file.openDataSet("testData");
