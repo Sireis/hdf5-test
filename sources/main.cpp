@@ -11,12 +11,19 @@
 
 #include "test.h"
 
+#define ENUM_STRINGIFY(enum, member) case enum::member: return #member;
+
 using namespace std::chrono;
 
 struct DataSpace
 {
     hsize_t offset[2];
     hsize_t size[2];
+};
+
+enum class EvictionStrategy {
+    FIFO,
+    LRU,
 };
 
 struct Scenario
@@ -26,6 +33,8 @@ struct Scenario
     DataSpace testSpace;
     int repetitions;
     int chunkSize;
+    uint64_t cacheLimit;
+    EvictionStrategy evictionStrategy;
 };
 
 std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace);
@@ -37,6 +46,7 @@ void printList(std::vector<int> &durations, int size);
 void printGraph(std::vector<int> &durations, int minimum, int maximum);
 void runScenario(Scenario scenario);
 void runScenarios(std::vector<Scenario> scenarios);
+const char* toString(EvictionStrategy strategy);
 
 int main(void)
 {    
@@ -52,6 +62,8 @@ int main(void)
         },
         .repetitions = 23,
         .chunkSize = 1024,
+        .cacheLimit = 1ULL*1024*1024*1024,
+        .evictionStrategy = EvictionStrategy::FIFO,
     };
 
     std::vector<Scenario> scenarios = {s1};
@@ -70,6 +82,8 @@ void runScenarios(std::vector<Scenario> scenarios)
 void runScenario(Scenario scenario)
 {
     setenv("STAGING_CHUNK_SIZE", std::to_string(scenario.chunkSize).c_str(), 1);
+    setenv("STAGING_CACHE_LIMIT", std::to_string(scenario.cacheLimit).c_str(), 1);
+    setenv("STAGING_EVICTION_STRATEGY", toString(scenario.evictionStrategy), 1);
 
     H5::H5File file = useTestFile(2, scenario.fileSpace.size);
         
@@ -236,4 +250,15 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum)
         std::cout << std::endl;
     }
     
+}
+
+
+const char* toString(EvictionStrategy strategy)
+{
+    switch (strategy)
+    {
+        ENUM_STRINGIFY(EvictionStrategy, LRU)
+        ENUM_STRINGIFY(EvictionStrategy, FIFO)
+        default: return "Error";
+    }
 }
