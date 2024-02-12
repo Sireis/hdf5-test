@@ -10,6 +10,7 @@
 #include <filesystem>
 
 #include "test.h"
+#include "parameters.hpp"
 
 #define ENUM_STRINGIFY(enum, member) case enum::member: return #member;
 
@@ -21,37 +22,44 @@ struct DataSpace
     hsize_t size[2];
 };
 
-enum class EvictionStrategy {
-    FIFO,
-    LRU,
-};
-
 struct Scenario
 {
     std::string name;
     DataSpace fileSpace;
     DataSpace testSpace;
+    AccessPattern accessPattern;
+    int accessAmount;
     int repetitions;
+    CacheShape cacheShape;
     int chunkSize;
     uint64_t cacheLimit;
     EvictionStrategy evictionStrategy;
 };
 
-std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace);
+struct ProfileResult 
+{
+    std::vector<int> durations;
+    std::vector<bool> validationResults;
+};
+
+void runScenario(Scenario scenario, bool isSilent);
+void runScenarios(std::vector<Scenario> scenarios, bool isSilent);
+std::vector<Scenario> createScenarioPermutation();
+ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace, int repetitions);
 void printAsCSV(uint8_t buffer[], size_t size);
 void printAsDat(std::string filePath, std::vector<int> list);
 std::string fill(std::string string, char filler, int count);
 void printTable(std::vector<int> &durations, hsize_t sizes[]);
 void printList(std::vector<int> &durations, int size);
 void printGraph(std::vector<int> &durations, int minimum, int maximum);
-void runScenario(Scenario scenario);
-void runScenarios(std::vector<Scenario> scenarios);
-const char* toString(EvictionStrategy strategy);
+const std::string toString(EvictionStrategy strategy);
+const std::string toString(AccessPattern pattern);
+const std::string toString(CacheShape value);
 
 int main(void)
 {    
     Scenario s1 = {
-        .name = "standard",
+        .name = "Standard Line",
         .fileSpace = {
             .offset = {0, 0},
             .size = {16*1024, 16*1024},
@@ -60,30 +68,113 @@ int main(void)
             .offset = {0, 0},
             .size = {4*1024, 4*1024},
         },
-        .repetitions = 23,
+        .accessPattern = AccessPattern::COHERENT_REGION,
+        .accessAmount = 1,
+        .repetitions = 3,
+        .cacheShape = CacheShape::LINE,
         .chunkSize = 1024,
-        .cacheLimit = 1ULL*1024*1024*1024,
+        .cacheLimit = 2ULL*1024*1024*1024,
+        .evictionStrategy = EvictionStrategy::FIFO,
+    };
+    
+    Scenario s2 = {
+        .name = "Standard Square",
+        .fileSpace = {
+            .offset = {0, 0},
+            .size = {16*1024, 16*1024},
+        },
+        .testSpace = {
+            .offset = {0, 0},
+            .size = {4*1024, 4*1024},
+        },
+        .accessPattern = AccessPattern::COHERENT_REGION,
+        .accessAmount = 1,
+        .repetitions = 3,
+        .cacheShape = CacheShape::SQUARE,
+        .chunkSize = 1024,
+        .cacheLimit = 2ULL*1024*1024*1024,
+        .evictionStrategy = EvictionStrategy::FIFO,
+    };
+    
+    Scenario t1 = {
+        .name = "Test",
+        .fileSpace = {
+            .offset = {0, 0},
+            .size = {16*1, 16*1},
+        },
+        .testSpace = {
+            .offset = {0, 0},
+            .size = {4*1, 4*1},
+        },
+        .accessPattern = AccessPattern::COHERENT_REGION,
+        .accessAmount = 1,
+        .repetitions = 3,
+        .cacheShape = CacheShape::LINE,
+        .chunkSize = 1024,
+        .cacheLimit = 2ULL*1024*1024*1024,
         .evictionStrategy = EvictionStrategy::FIFO,
     };
 
-    std::vector<Scenario> scenarios = {s1};
+    //std::vector<Scenario> scenarios = {t1};
+    std::vector<Scenario> scenarios = {s2, s1};
 
-    runScenarios(scenarios);
+    runScenarios(scenarios, false);
 }
 
-void runScenarios(std::vector<Scenario> scenarios)
+std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount)
+{
+    std::vector<Scenario> scenarios;
+    Scenario s;
+    for (AccessPattern accessPattern = AccessPattern::FULLY_RANDOM; accessPattern < AccessPattern::COUNT; ++accessPattern)
+    {
+        for (CacheShape cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
+        {
+            for (Layout layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
+            {
+                for (CacheChunkSize chunkSize = CacheChunkSize::SMALL; chunkSize < CacheChunkSize::COUNT; ++chunkSize)
+                {
+                    for (CacheLimit cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_1; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                    {
+                        for (EvictionStrategy evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
+                        {
+                            s = {
+                                .name = toString(accessPattern) + "-" + toString(cacheShape) + "-" + toString(layout) + "-" + toString(evictionStrategy),
+                                .fileSpace = fileSpace,
+                                .testSpace = testSpace,
+                                .accessPattern = accessPattern,
+                                .accessAmount = 0,
+                                .repetitions = repetitions,
+                                .cacheShape = cacheShape,
+                                .chunkSize = 1024,
+                                .cacheLimit = 1ULL*1024*1024*1024,
+                                .evictionStrategy = evictionStrategy,
+                            };
+
+                            scenarios.push_back(s);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    return scenarios;
+}
+
+void runScenarios(std::vector<Scenario> scenarios, bool isSilent)
 {
     for (Scenario s : scenarios)
     {
-        runScenario(s);
+        runScenario(s, isSilent);
     }    
 }
 
-void runScenario(Scenario scenario)
+void runScenario(Scenario scenario, bool isSilent)
 {
+    setenv("STAGING_CACHE_SHAPE", toString(scenario.cacheShape).c_str(), 1);
     setenv("STAGING_CHUNK_SIZE", std::to_string(scenario.chunkSize).c_str(), 1);
     setenv("STAGING_CACHE_LIMIT", std::to_string(scenario.cacheLimit).c_str(), 1);
-    setenv("STAGING_EVICTION_STRATEGY", toString(scenario.evictionStrategy), 1);
+    setenv("STAGING_EVICTION_STRATEGY", toString(scenario.evictionStrategy).c_str(), 1);
 
     H5::H5File file = useTestFile(2, scenario.fileSpace.size);
         
@@ -99,25 +190,36 @@ void runScenario(Scenario scenario)
     std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
 
     uint64_t* buffer = new uint64_t[scenario.testSpace.size[0] * scenario.testSpace.size[1]];
-    auto durations = profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace);
+    auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace, scenario.repetitions);
 
-    printTable(durations, scenario.testSpace.size);
-    std::cout << std::endl;
-    printList(durations, std::min((int)durations.size(), 12));
-    std::cout << std::endl;
-    printGraph(durations, *std::min_element(durations.begin(), durations.end()), *std::max_element(durations.begin(), durations.end()));
-    std::cout << std::endl;
-    printAsDat(" ", durations);
+    if (!isSilent)
+    {
+        printTable(profileResult.durations, scenario.testSpace.size);
+        std::cout << std::endl;
+        printList(profileResult.durations, std::min((int)profileResult.durations.size(), 12));
+        std::cout << std::endl;
+        printGraph(profileResult.durations, *std::min_element(profileResult.durations.begin(), profileResult.durations.end()), *std::max_element(profileResult.durations.begin(), profileResult.durations.end()));
+        std::cout << std::endl;
+        printAsDat(" ", profileResult.durations);
 
-    hsize_t printOffset[] = {0, 0};
-    hsize_t printSize[] = {8, 8};
-    printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
+        hsize_t printOffset[] = {0, 0};
+        hsize_t printSize[] = {8, 8};
+        printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
+    }
+
+    if (!std::all_of(profileResult.validationResults.begin(), profileResult.validationResults.end(), [](bool b) {return b;}))
+    {
+        std::cout << "FAIL" << std::endl;
+    }
+    else
+    {
+        std::cout << "PASS" << std::endl;
+    }
+    
 }
 
-std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace)
-{    
-    const int count = 12;
-    
+ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace, int repetitions)
+{        
     hsize_t dimensions[2];
     dataSpace.getSimpleExtentDims(nullptr, dimensions);
     hsize_t offset[2];
@@ -136,26 +238,23 @@ std::vector<int> profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataTyp
     int minimumIndex = 0;
     int maximumIndex = 0;
 
-    std::vector<int> durations;
-    durations.reserve(count);
+    ProfileResult profileResult;
 
-    for (size_t i = 0; i < count; i++)
+    profileResult.durations.reserve(repetitions);
+    profileResult.validationResults.reserve(repetitions);
+
+    for (size_t i = 0; i < repetitions; i++)
     {
         start = steady_clock::now();
         dataset.read(buffer, dataType, memorySpace, dataSpace);
         end = steady_clock::now();
 
         microseconds duration = duration_cast<microseconds>(end - start);
-        durations.push_back(duration.count());   
-        
-        bool isOkay = verifyBuffer((uint64_t*)buffer, 2, dimensions, offset, size);
-        if (!isOkay)
-        {
-            std::cout << "Buffers do NOT match" << std::endl;
-        }
+        profileResult.durations.push_back(duration.count());           
+        profileResult.validationResults.push_back(verifyBuffer((uint64_t*)buffer, 2, dimensions, offset, size));
     }
 
-    return durations;
+    return profileResult;
 }
 
 void printAsCSV(uint8_t buffer[], size_t size)
@@ -176,7 +275,7 @@ void printAsDat(std::string filePath, std::vector<int> list)
 
 std::string fill(std::string string, char filler, int count)
 {
-    return string + std::string(count - string.length(), filler);
+    return string + std::string(std::min(0ul, count - string.length()), filler);
 }
 
 void printTable(std::vector<int> &durations, hsize_t sizes[])
@@ -205,7 +304,7 @@ void printTable(std::vector<int> &durations, hsize_t sizes[])
 
 void printList(std::vector<int> &durations, int size)
 {
-    for (size_t i = 0; i < size - 2; i++)
+    for (int i = 0; i < size - 2; i++)
     {
         std::cout << durations[i] << " µs, ";
     }
@@ -250,15 +349,4 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum)
         std::cout << std::endl;
     }
     
-}
-
-
-const char* toString(EvictionStrategy strategy)
-{
-    switch (strategy)
-    {
-        ENUM_STRINGIFY(EvictionStrategy, LRU)
-        ENUM_STRINGIFY(EvictionStrategy, FIFO)
-        default: return "Error";
-    }
 }
