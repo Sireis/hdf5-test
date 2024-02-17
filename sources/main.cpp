@@ -44,7 +44,7 @@ struct ProfileResult
 
 void runScenario(Scenario scenario, bool isSilent);
 void runScenarios(std::vector<Scenario> scenarios, bool isSilent);
-std::vector<Scenario> createScenarioPermutation();
+std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount);
 ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace, int repetitions);
 void printAsCSV(uint8_t buffer[], size_t size);
 void printAsDat(std::string filePath, std::vector<int> list);
@@ -55,6 +55,8 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum);
 const std::string toString(EvictionStrategy strategy);
 const std::string toString(AccessPattern pattern);
 const std::string toString(CacheShape value);
+int toValue(CacheChunkSize value);
+uint64_t toValue(CacheLimit value, DataSpace dataSpace);
 
 int main(void)
 {    
@@ -116,7 +118,16 @@ int main(void)
     };
 
     //std::vector<Scenario> scenarios = {t1};
-    std::vector<Scenario> scenarios = {s2, s1};
+    //std::vector<Scenario> scenarios = {s2, s1};
+    DataSpace fileSpace = {
+        .offset = {0, 0},
+        .size = {16*1024, 16*1024},
+    };
+    DataSpace testSpace = {
+        .offset = {0, 0},
+        .size = {4*1024, 4*1024},
+    };
+    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 1);
 
     runScenarios(scenarios, false);
 }
@@ -138,15 +149,16 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                         for (EvictionStrategy evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
                         {
                             s = {
-                                .name = toString(accessPattern) + "-" + toString(cacheShape) + "-" + toString(layout) + "-" + toString(evictionStrategy),
+                                .name = toString(accessPattern) + "-" + toString(cacheShape) + "-" + toString(layout) 
+                                    + "-" + toString(chunkSize) + "-" + toString(cacheLimit) + "-" + toString(evictionStrategy),
                                 .fileSpace = fileSpace,
                                 .testSpace = testSpace,
                                 .accessPattern = accessPattern,
-                                .accessAmount = 0,
+                                .accessAmount = accessAmount,
                                 .repetitions = repetitions,
                                 .cacheShape = cacheShape,
-                                .chunkSize = 1024,
-                                .cacheLimit = 1ULL*1024*1024*1024,
+                                .chunkSize = toValue(chunkSize),
+                                .cacheLimit = toValue(cacheLimit, testSpace),
                                 .evictionStrategy = evictionStrategy,
                             };
 
@@ -325,6 +337,8 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum)
         double percentage = (double)durations[i] / (double)maximum;
         double exponent = std::log10(percentage);
         int coordinate = (int)std::round((exponent - minScale) * verticalLength / (maxScale - minScale));
+        coordinate = std::min(coordinate, verticalLength);
+        coordinate = std::max(coordinate, 0);
         //int level = durations[i]*verticalLength/maximum;
         for (size_t j = 0; j < coordinate; j++)
         {
@@ -347,6 +361,31 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum)
         }        
         
         std::cout << std::endl;
+    }    
+}
+
+int toValue(CacheChunkSize value)
+{
+    switch (value)
+    {
+    case CacheChunkSize::SMALL: return 64;
+    case CacheChunkSize::MEDIUM: return 1024;
+    case CacheChunkSize::LARGE: return 4096;    
+    default: return -1;
     }
-    
+}
+
+uint64_t toValue(CacheLimit value, DataSpace dataSpace)
+{
+    uint64_t area = dataSpace.size[0] * dataSpace.size[1];
+
+    switch (value)
+    {
+    case CacheLimit::TOO_LOW_FACTOR_0_1: return area / 10;
+    case CacheLimit::TOO_LOW_FACTOR_0_5: return area / 2;
+    case CacheLimit::TOO_LOW_FACTOR_0_9: return area * 9 / 10;
+    case CacheLimit::ENOUGH_FACTOR_1: return area * 1;
+    case CacheLimit::ENOUGH_FACTOR_5: return area * 5;
+    default: return -1;
+    }
 }
