@@ -203,6 +203,7 @@ void runScenario(Scenario scenario, bool isSilent)
 
     uint64_t* buffer = new uint64_t[scenario.testSpace.size[0] * scenario.testSpace.size[1]];
     auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace, scenario.repetitions);
+    dataset.close();
 
     if (!isSilent)
     {
@@ -377,7 +378,7 @@ int toValue(CacheChunkSize value)
 
 uint64_t toValue(CacheLimit value, DataSpace dataSpace)
 {
-    uint64_t area = dataSpace.size[0] * dataSpace.size[1];
+    uint64_t area = dataSpace.size[0] * dataSpace.size[1] * 8;
 
     switch (value)
     {
