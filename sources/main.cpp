@@ -129,28 +129,37 @@ int main(void)
     };
     std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 1);
 
-    runScenarios(scenarios, false);
+    runScenarios(scenarios, true);
 }
 
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount)
 {
+    AccessPattern accessPattern = AccessPattern::FULLY_RANDOM;
+    CacheShape cacheShape = CacheShape::SQUARE;
+    Layout layout = Layout::ALIGNED;
+    CacheChunkSize chunkSize = CacheChunkSize::SMALL;
+    CacheLimit cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_9;
+    EvictionStrategy evictionStrategy = EvictionStrategy::FIFO;
+
     std::vector<Scenario> scenarios;
     Scenario s;
-    for (AccessPattern accessPattern = AccessPattern::FULLY_RANDOM; accessPattern < AccessPattern::COUNT; ++accessPattern)
+    for (accessPattern = AccessPattern::FULLY_RANDOM; accessPattern < AccessPattern::COUNT; ++accessPattern)
     {
-        for (CacheShape cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
+        for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
         {
-            for (Layout layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
+            for (layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
             {
-                for (CacheChunkSize chunkSize = CacheChunkSize::SMALL; chunkSize < CacheChunkSize::COUNT; ++chunkSize)
+                for (chunkSize = CacheChunkSize::SMALL; chunkSize < CacheChunkSize::COUNT; ++chunkSize)
                 {
-                    for (CacheLimit cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_1; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                    for (cacheLimit = CacheLimit::ENOUGH_FACTOR_5; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
                     {
-                        for (EvictionStrategy evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
+                        for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
                         {
                             s = {
                                 .name = toString(accessPattern) + "-" + toString(cacheShape) + "-" + toString(layout) 
                                     + "-" + toString(chunkSize) + "-" + toString(cacheLimit) + "-" + toString(evictionStrategy),
+                                //.name = toString(cacheShape) 
+                                //    + "::" + toString(chunkSize) + "::" + toString(cacheLimit) + "::" + toString(evictionStrategy),
                                 .fileSpace = fileSpace,
                                 .testSpace = testSpace,
                                 .accessPattern = accessPattern,
@@ -228,7 +237,8 @@ void runScenario(Scenario scenario, bool isSilent)
     {
         std::cout << "PASS" << std::endl;
     }
-    
+
+    delete[] buffer;    
 }
 
 ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace, int repetitions)
