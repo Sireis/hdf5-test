@@ -66,17 +66,18 @@ std::unique_ptr<uint64_t[]> generateTestData(int rank, hsize_t* dimensions)
     return std::move(data);
 }
 
-bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *dimensions, hsize_t *offset, hsize_t *size)
+bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *sourceDimensions, hsize_t *targetDimensions, hsize_t *targetOffset, hsize_t *targetSize)
 {    
     int counter = 0;
-    for (int y = 0; y < dimensions[1]; y++)
+    for (hsize_t y = 0; y < sourceDimensions[1]; y++)
     {
-        for (int x = 0; x < dimensions[0]; x++)
+        for (hsize_t x = 0; x < sourceDimensions[0]; x++)
         {
-            if (x >= offset[0] && x < (offset[0] + size[0])
-            &&  y >= offset[1] && y < (offset[1] + size[1]))
+            if (x >= targetOffset[0] && x < (targetOffset[0] + targetSize[0])
+            &&  y >= targetOffset[1] && y < (targetOffset[1] + targetSize[1]))
             {
-                volatile size_t index = x + y*size[0];
+                hsize_t coordinates[] = {x, y};
+                volatile size_t index = getLinearIndex(coordinates, targetDimensions, rank);
                 volatile uint64_t value = ((uint64_t)counter << 32) | (x << 16) | (y << 0);
 
                 if (buffer[index] != value)
@@ -137,4 +138,22 @@ int getX(uint64_t value)
 int getY(uint64_t value)
 {
     return (value >> 0 ) & 0xFFFF;
+}
+
+uint64_t getLinearAddress(hsize_t* coordinates, hsize_t* arrayDimensions, hsize_t rank, uint8_t typeSize)
+{
+    return getLinearIndex(coordinates, arrayDimensions, rank) * typeSize;
+}
+
+hsize_t getLinearIndex(hsize_t* coordinates, hsize_t* arrayDimensions, hsize_t rank)
+{
+    hsize_t address = 0;
+    hsize_t multiplier = 1;
+    for (uint i = 0; i < rank; ++i)
+    {
+        address += coordinates[i] * multiplier;
+        multiplier *= arrayDimensions[i];
+    }
+
+    return address;
 }

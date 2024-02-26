@@ -57,6 +57,7 @@ const std::string toString(AccessPattern pattern);
 const std::string toString(CacheShape value);
 int toValue(CacheChunkSize value);
 uint64_t toValue(CacheLimit value, DataSpace dataSpace);
+DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, const CacheChunkSize &chunkSize);
 
 int main(void)
 {    
@@ -105,14 +106,14 @@ int main(void)
             .size = {16*1, 16*1},
         },
         .testSpace = {
-            .offset = {0, 0},
+            .offset = {0, 2},
             .size = {4*1, 4*1},
         },
         .accessPattern = AccessPattern::COHERENT_REGION,
         .accessAmount = 1,
         .repetitions = 3,
-        .cacheShape = CacheShape::LINE,
-        .chunkSize = 1024,
+        .cacheShape = CacheShape::SQUARE,
+        .chunkSize = 4,
         .cacheLimit = 2ULL*1024*1024*1024,
         .evictionStrategy = EvictionStrategy::FIFO,
     };
@@ -155,13 +156,14 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                     {
                         for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
                         {
+
                             s = {
                                 .name = toString(accessPattern) + "-" + toString(cacheShape) + "-" + toString(layout) 
                                     + "-" + toString(chunkSize) + "-" + toString(cacheLimit) + "-" + toString(evictionStrategy),
                                 //.name = toString(cacheShape) 
                                 //    + "::" + toString(chunkSize) + "::" + toString(cacheLimit) + "::" + toString(evictionStrategy),
                                 .fileSpace = fileSpace,
-                                .testSpace = testSpace,
+                                .testSpace = createDataSpace(testSpace, layout, chunkSize),
                                 .accessPattern = accessPattern,
                                 .accessAmount = accessAmount,
                                 .repetitions = repetitions,
@@ -205,12 +207,14 @@ void runScenario(Scenario scenario, bool isSilent)
     H5::DataSpace dataSpace = dataset.getSpace();
     dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
 
-    H5::DataSpace memorySpace(2, scenario.testSpace.size);
+    hsize_t memorySpaceSize[] = {scenario.testSpace.size[0] + scenario.testSpace.offset[0], scenario.testSpace.size[1] + scenario.testSpace.offset[1]};
+    H5::DataSpace memorySpace(2, memorySpaceSize);
     memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
 
     std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
 
-    uint64_t* buffer = new uint64_t[scenario.testSpace.size[0] * scenario.testSpace.size[1]];
+    size_t size = (memorySpaceSize[0] * memorySpaceSize[1]);
+    uint64_t* buffer = new uint64_t[size];
     auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace, scenario.repetitions);
     dataset.close();
 
@@ -243,13 +247,16 @@ void runScenario(Scenario scenario, bool isSilent)
 
 ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace, int repetitions)
 {        
-    hsize_t dimensions[2];
-    dataSpace.getSimpleExtentDims(nullptr, dimensions);
-    hsize_t offset[2];
-    hsize_t dummy[2];
-    memorySpace.getSelectBounds(offset, dummy);
-    hsize_t size[2];
-    memorySpace.getSimpleExtentDims(size, nullptr);
+    hsize_t sourceDimensions[2];
+    dataSpace.getSimpleExtentDims(nullptr, sourceDimensions);
+    hsize_t targetDimensions[2];
+    memorySpace.getSimpleExtentDims(nullptr, targetDimensions);
+    hsize_t targetOffset[2];
+    hsize_t opposite[2];
+    memorySpace.getSelectBounds(targetOffset, opposite);
+    hsize_t targetSize[2];
+    targetSize[0] = opposite[0] - targetOffset[0] + 1;
+    targetSize[1] = opposite[1] - targetOffset[1] + 1;
 
     steady_clock::time_point start = steady_clock::now();
     steady_clock::time_point end = steady_clock::now();
@@ -274,7 +281,7 @@ ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType d
 
         microseconds duration = duration_cast<microseconds>(end - start);
         profileResult.durations.push_back(duration.count());           
-        profileResult.validationResults.push_back(verifyBuffer((uint64_t*)buffer, 2, dimensions, offset, size));
+        profileResult.validationResults.push_back(verifyBuffer((uint64_t*)buffer, 2, sourceDimensions, targetDimensions, targetOffset, targetSize));
     }
 
     return profileResult;
@@ -377,6 +384,8 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum)
 
 int toValue(CacheChunkSize value)
 {
+    return 4;
+
     switch (value)
     {
     case CacheChunkSize::SMALL: return 64;
@@ -399,4 +408,32 @@ uint64_t toValue(CacheLimit value, DataSpace dataSpace)
     case CacheLimit::ENOUGH_FACTOR_5: return area * 5;
     default: return -1;
     }
+}
+
+DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, const CacheChunkSize &chunkSize)
+{
+    DataSpace newSpace;
+    int offset = 0.1 * toValue(chunkSize);
+    offset = 2;
+    
+    newSpace.size[0] = baseDataSpace.size[0];
+    newSpace.size[1] = baseDataSpace.size[1];
+
+    if (layout == Layout::ALIGNED)
+    {
+        newSpace.offset[0] = baseDataSpace.offset[0];
+        newSpace.offset[1] = baseDataSpace.offset[1];
+    }
+    else if (layout == Layout::VERTICAL_OFFSET)
+    {
+        newSpace.offset[0] = baseDataSpace.offset[0];
+        newSpace.offset[1] = baseDataSpace.offset[1] + offset;
+    }
+    else if (layout == Layout::HORIZONTAL_OFFSET)
+    {
+        newSpace.offset[0] = baseDataSpace.offset[0] + offset;
+        newSpace.offset[1] = baseDataSpace.offset[1];
+    }
+    
+    return newSpace;
 }
