@@ -78,9 +78,10 @@ bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *sourceDimensions, hsiz
             {
                 hsize_t coordinates[] = {x, y};
                 volatile size_t index = getLinearIndex(coordinates, targetDimensions, rank);
-                volatile uint64_t value = ((uint64_t)counter << 32) | (x << 16) | (y << 0);
+                volatile uint64_t expected = ((uint64_t)counter << 32) | (x << 16) | (y << 0);
+                uint64_t found = buffer[index];
 
-                if (buffer[index] != value)
+                if (found != expected)
                 {
                     std::cout << "[" << x << "|" << y << "]" << std::endl;
                     return false;

@@ -384,8 +384,6 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum)
 
 int toValue(CacheChunkSize value)
 {
-    return 4;
-
     switch (value)
     {
     case CacheChunkSize::SMALL: return 64;
