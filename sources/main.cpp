@@ -45,6 +45,7 @@ struct ProfileResult
 void runScenario(Scenario scenario, bool isSilent);
 void runScenarios(std::vector<Scenario> scenarios, bool isSilent);
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount);
+void scrambleScenarios(std::vector<Scenario> &scenarios);
 ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace, int repetitions);
 void printAsCSV(uint8_t buffer[], size_t size);
 void printAsDat(std::string filePath, std::vector<int> list);
@@ -129,13 +130,14 @@ int main(void)
         .size = {4*1024, 4*1024},
     };
     std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 1);
+    //scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
 }
 
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount)
 {
-    AccessPattern accessPattern = AccessPattern::FULLY_RANDOM;
+    AccessPattern accessPattern = AccessPattern::ALWAYS_THE_SAME;
     CacheShape cacheShape = CacheShape::SQUARE;
     Layout layout = Layout::ALIGNED;
     CacheChunkSize chunkSize = CacheChunkSize::SMALL;
@@ -144,17 +146,25 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
 
     std::vector<Scenario> scenarios;
     Scenario s;
-    for (accessPattern = AccessPattern::FULLY_RANDOM; accessPattern < AccessPattern::COUNT; ++accessPattern)
+    for (accessPattern = AccessPattern::ALWAYS_THE_SAME; accessPattern < AccessPattern::COUNT; ++accessPattern)
     {
         for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
         {
             for (layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
             {
+                if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::RANDOM_PATTERN
+                || accessPattern == AccessPattern::COHERENT_REGION
+                || accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL) 
+                && layout != Layout::OFFSET)
+                {
+                    continue;
+                }
+                
                 for (chunkSize = CacheChunkSize::SMALL; chunkSize < CacheChunkSize::COUNT; ++chunkSize)
                 {
                     for (cacheLimit = CacheLimit::ENOUGH_FACTOR_5; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
                     {
-                        for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
+                        for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::LRU; ++evictionStrategy)
                         {
 
                             s = {
@@ -182,6 +192,11 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
     }
 
     return scenarios;
+}
+
+void scrambleScenarios(std::vector<Scenario> &scenarios)
+{
+    std::random_shuffle(scenarios.begin(), scenarios.end());
 }
 
 void runScenarios(std::vector<Scenario> scenarios, bool isSilent)
@@ -215,6 +230,7 @@ void runScenario(Scenario scenario, bool isSilent)
 
     size_t size = (memorySpaceSize[0] * memorySpaceSize[1]);
     uint64_t* buffer = new uint64_t[size];
+    std::memset(buffer, 0, size * sizeof(uint64_t));
     auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace, scenario.repetitions);
     dataset.close();
 
@@ -431,6 +447,11 @@ DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, 
     {
         newSpace.offset[0] = baseDataSpace.offset[0] + offset;
         newSpace.offset[1] = baseDataSpace.offset[1];
+    }
+    else if (layout == Layout::OFFSET)
+    {
+        newSpace.offset[0] = baseDataSpace.offset[0] + offset;
+        newSpace.offset[1] = baseDataSpace.offset[1] + offset;
     }
     
     return newSpace;

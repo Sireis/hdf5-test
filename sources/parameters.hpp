@@ -5,6 +5,7 @@
 #define MAKE_MEMBER(a) a,
 
 #define FOR_ALL_ACCESS_PATTERNS(apply) \
+    apply(ALWAYS_THE_SAME) \
     apply(FULLY_RANDOM) \
     apply(RANDOM_PATTERN) \
     apply(COHERENT_REGION) \
@@ -60,6 +61,7 @@ const std::string toString(CacheShape value)
     apply(ALIGNED) \
     apply(VERTICAL_OFFSET) \
     apply(HORIZONTAL_OFFSET) \
+    apply(OFFSET) \
     apply(COUNT)
 
 enum class Layout {
