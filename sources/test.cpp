@@ -66,18 +66,18 @@ std::unique_ptr<uint64_t[]> generateTestData(int rank, hsize_t* dimensions)
     return std::move(data);
 }
 
-bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *sourceDimensions, hsize_t *targetDimensions, hsize_t *targetOffset, hsize_t *targetSize)
+bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *sourceDimensions, hsize_t *sourceOffset, hsize_t *targetDimensions, hsize_t *targetOffset, hsize_t *targetSize)
 {    
     int counter = 0;
     for (hsize_t y = 0; y < sourceDimensions[1]; y++)
     {
         for (hsize_t x = 0; x < sourceDimensions[0]; x++)
         {
-            if (x >= targetOffset[0] && x < (targetOffset[0] + targetSize[0])
-            &&  y >= targetOffset[1] && y < (targetOffset[1] + targetSize[1]))
+            if (x >= sourceOffset[0] && x < (sourceOffset[0] + targetSize[0])
+            &&  y >= sourceOffset[1] && y < (sourceOffset[1] + targetSize[1]))
             {
-                hsize_t coordinates[] = {x, y};
-                volatile size_t index = getLinearIndex(coordinates, targetDimensions, rank);
+                hsize_t targetCoordinates[] = {targetOffset[0] + x - sourceOffset[0], targetOffset[1] + y - sourceOffset[1]};
+                volatile size_t index = getLinearIndex(targetCoordinates, targetDimensions, rank);
                 volatile uint64_t expected = ((uint64_t)counter << 32) | (x << 16) | (y << 0);
                 uint64_t found = buffer[index];
 

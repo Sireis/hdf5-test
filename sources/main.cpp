@@ -42,11 +42,17 @@ struct ProfileResult
     std::vector<bool> validationResults;
 };
 
+struct ProfiledReadAccess
+{
+    H5::DataSpace memorySpace;
+    H5::DataSpace dataSpace;
+};
+
 void runScenario(Scenario scenario, bool isSilent);
 void runScenarios(std::vector<Scenario> scenarios, bool isSilent);
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount);
 void scrambleScenarios(std::vector<Scenario> &scenarios);
-ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace, int repetitions);
+ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces);
 void printAsCSV(uint8_t buffer[], size_t size);
 void printAsDat(std::string filePath, std::vector<int> list);
 std::string fill(std::string string, char filler, int count);
@@ -56,6 +62,8 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum);
 const std::string toString(EvictionStrategy strategy);
 const std::string toString(AccessPattern pattern);
 const std::string toString(CacheShape value);
+bool isOverlappingHyperslabInVector(std::vector<ProfiledReadAccess> spaces, hsize_t offset[2], hsize_t size[2]);
+bool isOverlappingHyperslab(H5::DataSpace dataSpace1, hsize_t offset2[2], hsize_t opposite2[2]);
 int toValue(CacheChunkSize value);
 uint64_t toValue(CacheLimit value, DataSpace dataSpace);
 DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, const CacheChunkSize &chunkSize);
@@ -129,7 +137,7 @@ int main(void)
         .offset = {0, 0},
         .size = {4*1024, 4*1024},
     };
-    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 1);
+    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 3, 2);
     //scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
@@ -146,9 +154,9 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
 
     std::vector<Scenario> scenarios;
     Scenario s;
-    for (accessPattern = AccessPattern::ALWAYS_THE_SAME; accessPattern < AccessPattern::COUNT; ++accessPattern)
+    for (accessPattern = AccessPattern::FULLY_RANDOM; accessPattern < AccessPattern::COUNT; ++accessPattern)
     {
-        for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
+        for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::LINE; ++cacheShape)
         {
             for (layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
             {
@@ -218,20 +226,100 @@ void runScenario(Scenario scenario, bool isSilent)
         
     H5::DataSet dataset = file.openDataSet("testData");
     H5::DataType dataType = dataset.getDataType();
-
-    H5::DataSpace dataSpace = dataset.getSpace();
-    dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
-
     hsize_t memorySpaceSize[] = {scenario.testSpace.size[0] + scenario.testSpace.offset[0], scenario.testSpace.size[1] + scenario.testSpace.offset[1]};
-    H5::DataSpace memorySpace(2, memorySpaceSize);
-    memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+
+    std::vector<ProfiledReadAccess> spaces;
+    spaces.reserve(scenario.accessAmount);
+    if (scenario.accessPattern == AccessPattern::ALWAYS_THE_SAME)
+    {
+        H5::DataSpace dataSpace = dataset.getSpace();
+        dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+
+        H5::DataSpace memorySpace(2, memorySpaceSize);
+        memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+        
+        ProfiledReadAccess access = {
+            .memorySpace = memorySpace,
+            .dataSpace = dataSpace,
+        };
+
+        for (int i = 0; i < scenario.accessAmount; i++) {
+            spaces.push_back(access);
+        }
+    }
+    else if (scenario.accessPattern == AccessPattern::FULLY_RANDOM)
+    {
+        for (int i = 0; i < scenario.accessAmount; i++)
+        {
+            hsize_t randomOffset[2] = {rand() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), rand() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
+            hsize_t noOffset[2] = {0, 0};
+
+            H5::DataSpace dataSpace = dataset.getSpace();
+            dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, randomOffset);
+
+            H5::DataSpace memorySpace(2, memorySpaceSize);
+            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, noOffset);
+            
+            ProfiledReadAccess access = {
+                .memorySpace = memorySpace,
+                .dataSpace = dataSpace,
+            };
+
+            spaces.push_back(access);
+        }
+    }
+    else if (scenario.accessPattern == AccessPattern::RANDOM_PATTERN)
+    {
+        for (int i = 0; i < scenario.accessAmount; i++)
+        {   
+            hsize_t randomOffset[2];
+            do
+            {
+                hsize_t randomOffset[2] = {rand() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), rand() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
+
+            } while (isOverlappingHyperslabInVector(spaces, randomOffset, scenario.testSpace.size));
+            
+            H5::DataSpace dataSpace = dataset.getSpace();
+            dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, randomOffset);
+
+            H5::DataSpace memorySpace(2, memorySpaceSize);
+            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, randomOffset);
+            
+            ProfiledReadAccess access = {
+                .memorySpace = memorySpace,
+                .dataSpace = dataSpace,
+            };
+            spaces.push_back(access);
+        }
+    }
+    else if (scenario.accessPattern == AccessPattern::COHERENT_REGION)
+    {
+        H5::DataSpace dataSpace = dataset.getSpace();
+        dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+
+        H5::DataSpace memorySpace(2, memorySpaceSize);
+        memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+        
+        ProfiledReadAccess access = {
+            .memorySpace = memorySpace,
+            .dataSpace = dataSpace,
+        };
+        for (int i = 0; i < scenario.accessAmount; i++) {
+            spaces.push_back(access);
+        }
+    }
+    else if (scenario.accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL)
+    {
+        H5::DataSpace dataSpace = dataset.getSpace();
+        dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+    }
 
     std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
 
     size_t size = (memorySpaceSize[0] * memorySpaceSize[1]);
     uint64_t* buffer = new uint64_t[size];
     std::memset(buffer, 0, size * sizeof(uint64_t));
-    auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, memorySpace, dataSpace, scenario.repetitions);
+    auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, spaces);
     dataset.close();
 
     if (!isSilent)
@@ -261,19 +349,8 @@ void runScenario(Scenario scenario, bool isSilent)
     delete[] buffer;    
 }
 
-ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, H5::DataSpace memorySpace, H5::DataSpace dataSpace, int repetitions)
+ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces)
 {        
-    hsize_t sourceDimensions[2];
-    dataSpace.getSimpleExtentDims(nullptr, sourceDimensions);
-    hsize_t targetDimensions[2];
-    memorySpace.getSimpleExtentDims(nullptr, targetDimensions);
-    hsize_t targetOffset[2];
-    hsize_t opposite[2];
-    memorySpace.getSelectBounds(targetOffset, opposite);
-    hsize_t targetSize[2];
-    targetSize[0] = opposite[0] - targetOffset[0] + 1;
-    targetSize[1] = opposite[1] - targetOffset[1] + 1;
-
     steady_clock::time_point start = steady_clock::now();
     steady_clock::time_point end = steady_clock::now();
 
@@ -286,18 +363,33 @@ ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType d
 
     ProfileResult profileResult;
 
-    profileResult.durations.reserve(repetitions);
-    profileResult.validationResults.reserve(repetitions);
+    profileResult.durations.reserve(spaces.size());
+    profileResult.validationResults.reserve(spaces.size());
 
-    for (size_t i = 0; i < repetitions; i++)
-    {
+    for (ProfiledReadAccess access : spaces)
+    {        
+        hsize_t sourceDimensions[2];
+        access.dataSpace.getSimpleExtentDims(nullptr, sourceDimensions);
+        hsize_t sourceOffset[2];
+        hsize_t sourceOpposite[2];
+        access.dataSpace.getSelectBounds(sourceOffset, sourceOpposite);
+
+        hsize_t targetDimensions[2];
+        access.memorySpace.getSimpleExtentDims(nullptr, targetDimensions);
+        hsize_t targetOffset[2];
+        hsize_t targetOpposite[2];
+        access.memorySpace.getSelectBounds(targetOffset, targetOpposite);
+        hsize_t targetSize[2];
+        targetSize[0] = targetOpposite[0] - targetOffset[0] + 1;
+        targetSize[1] = targetOpposite[1] - targetOffset[1] + 1;
+
         start = steady_clock::now();
-        dataset.read(buffer, dataType, memorySpace, dataSpace);
+        dataset.read(buffer, dataType, access.memorySpace, access.dataSpace);
         end = steady_clock::now();
 
         microseconds duration = duration_cast<microseconds>(end - start);
         profileResult.durations.push_back(duration.count());           
-        profileResult.validationResults.push_back(verifyBuffer((uint64_t*)buffer, 2, sourceDimensions, targetDimensions, targetOffset, targetSize));
+        profileResult.validationResults.push_back(verifyBuffer((uint64_t*)buffer, 2, sourceDimensions, sourceOffset, targetDimensions, targetOffset, targetSize));
     }
 
     return profileResult;
@@ -398,6 +490,36 @@ void printGraph(std::vector<int> &durations, int minimum, int maximum)
     }    
 }
 
+bool isOverlappingHyperslabInVector(std::vector<ProfiledReadAccess> spaces, hsize_t offset[2], hsize_t size[2])
+{
+    for (ProfiledReadAccess space : spaces)
+    {
+        hsize_t opposite[2] = {offset[0] + size[0], offset[1] + size[1]};
+        if (isOverlappingHyperslab(space.memorySpace, offset, opposite))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool isOverlappingHyperslab(H5::DataSpace dataSpace1, hsize_t offset2[2], hsize_t opposite2[2])
+{
+    hsize_t offset1[2];
+    hsize_t opposite1[2];
+    dataSpace1.getSelectBounds(offset1, opposite1);
+
+    if (offset1[0] > opposite2[0] || offset2[0] > opposite1[0])
+    {
+        return false;
+    }
+    if (offset1[1] > opposite2[1] || offset2[1] > opposite1[1])
+    {
+        return false;
+    }
+    return true;
+}
+
 int toValue(CacheChunkSize value)
 {
     switch (value)
@@ -420,6 +542,7 @@ uint64_t toValue(CacheLimit value, DataSpace dataSpace)
     case CacheLimit::TOO_LOW_FACTOR_0_9: return area * 9 / 10;
     case CacheLimit::ENOUGH_FACTOR_1: return area * 1;
     case CacheLimit::ENOUGH_FACTOR_5: return area * 5;
+    case CacheLimit::ENOUGH_FACTOR_8: return area * 8;
     default: return -1;
     }
 }

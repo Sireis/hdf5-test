@@ -116,6 +116,7 @@ const std::string toString(CacheChunkSize value)
     apply(TOO_LOW_FACTOR_0_9) \
     apply(ENOUGH_FACTOR_1) \
     apply(ENOUGH_FACTOR_5) \
+    apply(ENOUGH_FACTOR_8) \
     apply(COUNT) 
 
 enum class CacheLimit {
