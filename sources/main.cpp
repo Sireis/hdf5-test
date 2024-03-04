@@ -272,10 +272,12 @@ void runScenario(Scenario scenario, bool isSilent)
     {
         for (int i = 0; i < scenario.accessAmount; i++)
         {   
+            hsize_t noOffset[2] = {0, 0};
             hsize_t randomOffset[2];
             do
             {
-                hsize_t randomOffset[2] = {rand() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), rand() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
+                randomOffset[0] = rand() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]);
+                randomOffset[1] = rand() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1]);
 
             } while (isOverlappingHyperslabInVector(spaces, randomOffset, scenario.testSpace.size));
             
@@ -283,7 +285,7 @@ void runScenario(Scenario scenario, bool isSilent)
             dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, randomOffset);
 
             H5::DataSpace memorySpace(2, memorySpaceSize);
-            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, randomOffset);
+            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, noOffset);
             
             ProfiledReadAccess access = {
                 .memorySpace = memorySpace,
