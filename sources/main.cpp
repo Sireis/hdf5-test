@@ -309,24 +309,63 @@ void runScenario(Scenario scenario, bool isSilent)
     }
     else if (scenario.accessPattern == AccessPattern::COHERENT_REGION)
     {
-        H5::DataSpace dataSpace = dataset.getSpace();
-        dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+        hsize_t offset[2]  = {scenario.testSpace.offset[0], scenario.testSpace.offset[1]};
 
-        H5::DataSpace memorySpace(2, memorySpaceSize);
-        memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+        for (int i = 0; i < scenario.accessAmount; i++) 
+        {
+            if (i > 0)
+            {
+                offset[0] += scenario.testSpace.size[0];
+                if (offset[0] + scenario.testSpace.size[0] > scenario.fileSpace.size[0])
+                {
+                    offset[0] = scenario.testSpace.offset[0];
+                    offset[1] += scenario.testSpace.size[1];
+                }
+            }
+
+            H5::DataSpace dataSpace = dataset.getSpace();
+            dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, offset);
+
+            H5::DataSpace memorySpace(2, memorySpaceSize);
+            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+
+            ProfiledReadAccess access = {
+                .memorySpace = memorySpace,
+                .dataSpace = dataSpace,
+            };
         
-        ProfiledReadAccess access = {
-            .memorySpace = memorySpace,
-            .dataSpace = dataSpace,
-        };
-        for (int i = 0; i < scenario.accessAmount; i++) {
             spaces.push_back(access);
         }
     }
     else if (scenario.accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL)
     {
-        H5::DataSpace dataSpace = dataset.getSpace();
-        dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+        hsize_t offset[2]  = {scenario.testSpace.offset[0], scenario.testSpace.offset[1]};
+        
+        for (int i = 0; i < scenario.accessAmount; i++) 
+        {
+            if (i > 0)
+            {
+                offset[1] += scenario.testSpace.size[1];
+                if (offset[1] + scenario.testSpace.size[1] > scenario.fileSpace.size[1])
+                {
+                    offset[1] = scenario.testSpace.offset[1];
+                    offset[0] += scenario.testSpace.size[0];
+                }
+            }
+
+            H5::DataSpace dataSpace = dataset.getSpace();
+            dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, offset);
+
+            H5::DataSpace memorySpace(2, memorySpaceSize);
+            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+
+            ProfiledReadAccess access = {
+                .memorySpace = memorySpace,
+                .dataSpace = dataSpace,
+            };
+        
+            spaces.push_back(access);
+        }
     }
 
     std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
