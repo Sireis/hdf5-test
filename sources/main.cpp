@@ -137,8 +137,8 @@ int main(void)
         .offset = {0, 0},
         .size = {4*1024, 4*1024},
     };
-    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 3, 2);
-    //scrambleScenarios(scenarios);
+    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 5);
+    scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
 }
@@ -154,10 +154,18 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
 
     std::vector<Scenario> scenarios;
     Scenario s;
-    for (accessPattern = AccessPattern::FULLY_RANDOM; accessPattern < AccessPattern::COUNT; ++accessPattern)
+    for (accessPattern = AccessPattern::ALWAYS_THE_SAME; accessPattern < AccessPattern::COUNT; ++accessPattern)
     {
-        for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::LINE; ++cacheShape)
-        {
+        for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
+        {            
+            if (cacheShape != CacheShape::LINE
+            && 
+            (accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL
+            || accessPattern == AccessPattern::COHERENT_REGION))
+            {
+                continue;
+            }
+
             for (layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
             {
                 if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::RANDOM_PATTERN
@@ -170,9 +178,14 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                 
                 for (chunkSize = CacheChunkSize::SMALL; chunkSize < CacheChunkSize::COUNT; ++chunkSize)
                 {
-                    for (cacheLimit = CacheLimit::ENOUGH_FACTOR_5; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                    if (cacheShape == CacheShape::LINE && chunkSize != CacheChunkSize::LARGE)
                     {
-                        for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::LRU; ++evictionStrategy)
+                        continue;
+                    }
+
+                    for (cacheLimit = CacheLimit::ENOUGH_FACTOR_8; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                    {
+                        for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
                         {
 
                             s = {
