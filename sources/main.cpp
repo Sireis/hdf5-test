@@ -8,6 +8,7 @@
 #include <numeric>
 #include <math.h>
 #include <filesystem>
+#include <fstream>
 
 #include "test.h"
 #include "parameters.hpp"
@@ -55,7 +56,9 @@ void scrambleScenarios(std::vector<Scenario> &scenarios);
 ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces);
 void printAsCSV(uint8_t buffer[], size_t size);
 void printAsDat(std::string filePath, std::vector<int> list);
+void saveToFileAsDat(std::string filePath, std::vector<int> list, std::string name);
 std::string fill(std::string string, char filler, int count);
+std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &dataset);
 void printTable(std::vector<int> &durations, hsize_t sizes[]);
 void printList(std::vector<int> &durations, int size);
 void printGraph(std::vector<int> &durations, int minimum, int maximum);
@@ -112,7 +115,7 @@ int main(void)
         .name = "Test",
         .fileSpace = {
             .offset = {0, 0},
-            .size = {16*1, 16*1},
+            .size = {8*1, 8*1},
         },
         .testSpace = {
             .offset = {0, 2},
@@ -131,14 +134,14 @@ int main(void)
     //std::vector<Scenario> scenarios = {s2, s1};
     DataSpace fileSpace = {
         .offset = {0, 0},
-        .size = {16*1024, 16*1024},
+        .size = {8, 8},
     };
     DataSpace testSpace = {
         .offset = {0, 0},
-        .size = {4*1024, 4*1024},
+        .size = {4, 4},
     };
-    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 5);
-    scrambleScenarios(scenarios);
+    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 1);
+    //scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
 }
@@ -166,7 +169,7 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                 continue;
             }
 
-            for (layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
+            for (layout = Layout::VERTICAL_OFFSET; layout < Layout::COUNT; ++layout)
             {
                 if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::RANDOM_PATTERN
                 || accessPattern == AccessPattern::COHERENT_REGION
@@ -239,6 +242,213 @@ void runScenario(Scenario scenario, bool isSilent)
         
     H5::DataSet dataset = file.openDataSet("testData");
     H5::DataType dataType = dataset.getDataType();
+
+    std::vector<ProfiledReadAccess> spaces = createAccesses(scenario, dataset);
+
+    std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
+
+    hsize_t memorySpaceSize[] = {scenario.testSpace.size[0] + scenario.testSpace.offset[0], scenario.testSpace.size[1] + scenario.testSpace.offset[1]};
+    size_t size = (memorySpaceSize[0] * memorySpaceSize[1]);
+    uint64_t* buffer = new uint64_t[size];
+    std::memset(buffer, 0, size * sizeof(uint64_t));
+    auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, spaces);
+    dataset.close();
+
+    if (!isSilent)
+    {
+        printTable(profileResult.durations, scenario.testSpace.size);
+        std::cout << std::endl;
+        printList(profileResult.durations, std::min((int)profileResult.durations.size(), 12));
+        std::cout << std::endl;
+        printGraph(profileResult.durations, *std::min_element(profileResult.durations.begin(), profileResult.durations.end()), *std::max_element(profileResult.durations.begin(), profileResult.durations.end()));
+        std::cout << std::endl;
+        printAsDat(" ", profileResult.durations);
+
+        hsize_t printOffset[] = {0, 0};
+        hsize_t printSize[] = {8, 8};
+        printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
+    }
+
+    if (!std::all_of(profileResult.validationResults.begin(), profileResult.validationResults.end(), [](bool b) {return b;}))
+    {
+        std::cout << "FAIL" << std::endl;
+    }
+    else
+    {
+        std::cout << "PASS" << std::endl;
+    }
+
+    std::string environment = ENVIRONMENT;
+    if (environment.compare("home") == 0) 
+    {
+        //saveToFileAsDat("/mnt/a/Repositories/Hagen/Masterarbeit-Praktische-Informatik/assets/data/", profileResult.durations, scenario.name);
+    }
+    else if (environment.compare("jusuf") == 0) 
+    {
+        //saveToFileAsDat("/p/home/jusers/wiesmann1/jusuf/results", profileResult.durations, scenario.name);
+    }    
+
+    delete[] buffer;    
+}
+
+ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces)
+{        
+    steady_clock::time_point start = steady_clock::now();
+    steady_clock::time_point end = steady_clock::now();
+
+    microseconds minimum(999999999999999);
+    microseconds maximum(0);
+    microseconds sum(0);
+
+    int minimumIndex = 0;
+    int maximumIndex = 0;
+
+    ProfileResult profileResult;
+
+    profileResult.durations.reserve(spaces.size());
+    profileResult.validationResults.reserve(spaces.size());
+
+    for (ProfiledReadAccess access : spaces)
+    {        
+        hsize_t sourceDimensions[2];
+        access.dataSpace.getSimpleExtentDims(nullptr, sourceDimensions);
+        hsize_t sourceOffset[2];
+        hsize_t sourceOpposite[2];
+        access.dataSpace.getSelectBounds(sourceOffset, sourceOpposite);
+
+        hsize_t targetDimensions[2];
+        access.memorySpace.getSimpleExtentDims(nullptr, targetDimensions);
+        hsize_t targetOffset[2];
+        hsize_t targetOpposite[2];
+        access.memorySpace.getSelectBounds(targetOffset, targetOpposite);
+        hsize_t targetSize[2];
+        targetSize[0] = targetOpposite[0] - targetOffset[0] + 1;
+        targetSize[1] = targetOpposite[1] - targetOffset[1] + 1;
+
+        start = steady_clock::now();
+        dataset.read(buffer, dataType, access.memorySpace, access.dataSpace);
+        end = steady_clock::now();
+
+        microseconds duration = duration_cast<microseconds>(end - start);
+        profileResult.durations.push_back(duration.count());           
+        profileResult.validationResults.push_back(verifyBuffer((uint64_t*)buffer, 2, sourceDimensions, sourceOffset, targetDimensions, targetOffset, targetSize));
+    }
+
+    return profileResult;
+}
+
+void printAsCSV(uint8_t buffer[], size_t size)
+{
+    for (size_t i = 0; i < size; i++)
+    {        
+        std::cout << std::to_string(buffer[i]) << std::endl;
+    }    
+}
+
+void printAsDat(std::string filePath, std::vector<int> list)
+{
+    for (int i = 0; i < list.size(); ++i)
+    {
+        std::cout << i << " " << list[i] << std::endl;
+    }
+}
+
+void saveToFileAsDat(std::string filePath, std::vector<int> list, std::string name)
+{
+    std::filesystem::path directoryPath = std::filesystem::path(filePath) / name / ENVIRONMENT;
+    std::filesystem::create_directories(directoryPath);
+    std::string fullPathString = (directoryPath / HDF5_VARIANT).string();
+
+    std::ofstream file;
+    file.open(fullPathString + ".dat");
+    for (int i = 0; i < list.size(); ++i)
+    {
+        file << i << " " << list[i] << std::endl;
+    }
+    file.close();
+}
+
+std::string fill(std::string string, char filler, int count)
+{
+    return string + std::string(std::min(0ul, count - string.length()), filler);
+}
+
+void printTable(std::vector<int> &durations, hsize_t sizes[])
+{
+
+    int average = std::accumulate(durations.begin(), durations.end(), 0) / durations.size();
+    auto minimumIterator = std::min_element(durations.begin(), durations.end());
+    int minimumIndex = std::distance(durations.begin(), minimumIterator);
+    int minimum = *minimumIterator;
+    auto maximumIterator = std::max_element(durations.begin(), durations.end());
+    int maximumIndex = std::distance(durations.begin(), maximumIterator);
+    int maximum = *maximumIterator;
+
+    size_t bytes = sizes[0] * sizes[1] * 8;
+    float throughputMinimum = bytes / (minimum / 1e+6) / 1024 / 1024;
+    float throughputAverage = bytes / (average / 1e+6) / 1024 / 1024;
+    float throughputMaximum = bytes / (maximum / 1e+6) / 1024 / 1024;
+
+    std::cout << "+---------------- dataset.read(...) ----------------+" << std::endl;
+    std::cout << "| repetitions:    " << fill(std::to_string(durations.size()), ' ', 6) << fill(" ", ' ', 28) << "|" << std::endl;
+    std::cout << "| minimum time:   " << fill(std::to_string(minimum), ' ', 6) << " µs @ " << fill(std::to_string(minimumIndex), ' ', 7) << "   " << round(throughputMinimum) << " MiB/s  " << "|" << std::endl;
+    std::cout << "| average time:   " << fill(std::to_string(average), ' ', 6) << " µs " << fill(" ", ' ', 9) << "   " << round(throughputAverage) << " MiB/s  " << "|" << std::endl;
+    std::cout << "| maximum time:   " << fill(std::to_string(maximum), ' ', 6) << " µs @ " << fill(std::to_string(maximumIndex), ' ', 8) << "   " << round(throughputMaximum) << " MiB/s  " << "|" << std::endl;
+    std::cout << "+---------------------------------------------------+" << std::endl;
+}
+
+void printList(std::vector<int> &durations, int size)
+{
+    for (int i = 0; i < size - 2; i++)
+    {
+        std::cout << durations[i] << " µs, ";
+    }
+    std::cout << durations[size - 1] << " µs" << std::endl;    
+}
+
+void printGraph(std::vector<int> &durations, int minimum, int maximum)
+{
+    const int verticalLength = 20;
+    bool filled[durations.size()][verticalLength] = {};
+
+    double minPercentage = (double) minimum / (double) maximum;
+    double minScale = std::floor(std::log10(minPercentage));    
+    double maxScale = 0.0;
+
+    for (size_t i = 0; i < durations.size(); i++)
+    {
+        double percentage = (double)durations[i] / (double)maximum;
+        double exponent = std::log10(percentage);
+        int coordinate = (int)std::round((exponent - minScale) * verticalLength / (maxScale - minScale));
+        coordinate = std::min(coordinate, verticalLength);
+        coordinate = std::max(coordinate, 0);
+        //int level = durations[i]*verticalLength/maximum;
+        for (size_t j = 0; j < coordinate; j++)
+        {
+            filled[i][j] = true;
+        }        
+    }    
+
+    for (size_t i = verticalLength - 1; i > 0; i--)
+    {
+        for (size_t j = 0; j < durations.size(); j++)
+        {
+            if (filled[j][i])
+            {
+                std::cout << '|';
+            }
+            else
+            {
+                std::cout << ' ';
+            }
+        }        
+        
+        std::cout << std::endl;
+    }    
+}
+
+std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &dataset)
+{
     hsize_t memorySpaceSize[] = {scenario.testSpace.size[0] + scenario.testSpace.offset[0], scenario.testSpace.size[1] + scenario.testSpace.offset[1]};
 
     std::vector<ProfiledReadAccess> spaces;
@@ -368,180 +578,7 @@ void runScenario(Scenario scenario, bool isSilent)
         }
     }
 
-    std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
-
-    size_t size = (memorySpaceSize[0] * memorySpaceSize[1]);
-    uint64_t* buffer = new uint64_t[size];
-    std::memset(buffer, 0, size * sizeof(uint64_t));
-    auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, spaces);
-    dataset.close();
-
-    if (!isSilent)
-    {
-        printTable(profileResult.durations, scenario.testSpace.size);
-        std::cout << std::endl;
-        printList(profileResult.durations, std::min((int)profileResult.durations.size(), 12));
-        std::cout << std::endl;
-        printGraph(profileResult.durations, *std::min_element(profileResult.durations.begin(), profileResult.durations.end()), *std::max_element(profileResult.durations.begin(), profileResult.durations.end()));
-        std::cout << std::endl;
-        printAsDat(" ", profileResult.durations);
-
-        hsize_t printOffset[] = {0, 0};
-        hsize_t printSize[] = {8, 8};
-        printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
-    }
-
-    if (!std::all_of(profileResult.validationResults.begin(), profileResult.validationResults.end(), [](bool b) {return b;}))
-    {
-        std::cout << "FAIL" << std::endl;
-    }
-    else
-    {
-        std::cout << "PASS" << std::endl;
-    }
-
-    delete[] buffer;    
-}
-
-ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces)
-{        
-    steady_clock::time_point start = steady_clock::now();
-    steady_clock::time_point end = steady_clock::now();
-
-    microseconds minimum(999999999999999);
-    microseconds maximum(0);
-    microseconds sum(0);
-
-    int minimumIndex = 0;
-    int maximumIndex = 0;
-
-    ProfileResult profileResult;
-
-    profileResult.durations.reserve(spaces.size());
-    profileResult.validationResults.reserve(spaces.size());
-
-    for (ProfiledReadAccess access : spaces)
-    {        
-        hsize_t sourceDimensions[2];
-        access.dataSpace.getSimpleExtentDims(nullptr, sourceDimensions);
-        hsize_t sourceOffset[2];
-        hsize_t sourceOpposite[2];
-        access.dataSpace.getSelectBounds(sourceOffset, sourceOpposite);
-
-        hsize_t targetDimensions[2];
-        access.memorySpace.getSimpleExtentDims(nullptr, targetDimensions);
-        hsize_t targetOffset[2];
-        hsize_t targetOpposite[2];
-        access.memorySpace.getSelectBounds(targetOffset, targetOpposite);
-        hsize_t targetSize[2];
-        targetSize[0] = targetOpposite[0] - targetOffset[0] + 1;
-        targetSize[1] = targetOpposite[1] - targetOffset[1] + 1;
-
-        start = steady_clock::now();
-        dataset.read(buffer, dataType, access.memorySpace, access.dataSpace);
-        end = steady_clock::now();
-
-        microseconds duration = duration_cast<microseconds>(end - start);
-        profileResult.durations.push_back(duration.count());           
-        profileResult.validationResults.push_back(verifyBuffer((uint64_t*)buffer, 2, sourceDimensions, sourceOffset, targetDimensions, targetOffset, targetSize));
-    }
-
-    return profileResult;
-}
-
-void printAsCSV(uint8_t buffer[], size_t size)
-{
-    for (size_t i = 0; i < size; i++)
-    {        
-        std::cout << std::to_string(buffer[i]) << std::endl;
-    }    
-}
-
-void printAsDat(std::string filePath, std::vector<int> list)
-{
-    for (int i = 0; i < list.size(); ++i)
-    {
-        std::cout << i << " " << list[i] << std::endl;
-    }
-}
-
-std::string fill(std::string string, char filler, int count)
-{
-    return string + std::string(std::min(0ul, count - string.length()), filler);
-}
-
-void printTable(std::vector<int> &durations, hsize_t sizes[])
-{
-
-    int average = std::accumulate(durations.begin(), durations.end(), 0) / durations.size();
-    auto minimumIterator = std::min_element(durations.begin(), durations.end());
-    int minimumIndex = std::distance(durations.begin(), minimumIterator);
-    int minimum = *minimumIterator;
-    auto maximumIterator = std::max_element(durations.begin(), durations.end());
-    int maximumIndex = std::distance(durations.begin(), maximumIterator);
-    int maximum = *maximumIterator;
-
-    size_t bytes = sizes[0] * sizes[1] * 8;
-    float throughputMinimum = bytes / (minimum / 1e+6) / 1024 / 1024;
-    float throughputAverage = bytes / (average / 1e+6) / 1024 / 1024;
-    float throughputMaximum = bytes / (maximum / 1e+6) / 1024 / 1024;
-
-    std::cout << "+---------------- dataset.read(...) ----------------+" << std::endl;
-    std::cout << "| repetitions:    " << fill(std::to_string(durations.size()), ' ', 6) << fill(" ", ' ', 28) << "|" << std::endl;
-    std::cout << "| minimum time:   " << fill(std::to_string(minimum), ' ', 6) << " µs @ " << fill(std::to_string(minimumIndex), ' ', 7) << "   " << round(throughputMinimum) << " MiB/s  " << "|" << std::endl;
-    std::cout << "| average time:   " << fill(std::to_string(average), ' ', 6) << " µs " << fill(" ", ' ', 9) << "   " << round(throughputAverage) << " MiB/s  " << "|" << std::endl;
-    std::cout << "| maximum time:   " << fill(std::to_string(maximum), ' ', 6) << " µs @ " << fill(std::to_string(maximumIndex), ' ', 8) << "   " << round(throughputMaximum) << " MiB/s  " << "|" << std::endl;
-    std::cout << "+---------------------------------------------------+" << std::endl;
-}
-
-void printList(std::vector<int> &durations, int size)
-{
-    for (int i = 0; i < size - 2; i++)
-    {
-        std::cout << durations[i] << " µs, ";
-    }
-    std::cout << durations[size - 1] << " µs" << std::endl;    
-}
-
-void printGraph(std::vector<int> &durations, int minimum, int maximum)
-{
-    const int verticalLength = 20;
-    bool filled[durations.size()][verticalLength] = {};
-
-    double minPercentage = (double) minimum / (double) maximum;
-    double minScale = std::floor(std::log10(minPercentage));    
-    double maxScale = 0.0;
-
-    for (size_t i = 0; i < durations.size(); i++)
-    {
-        double percentage = (double)durations[i] / (double)maximum;
-        double exponent = std::log10(percentage);
-        int coordinate = (int)std::round((exponent - minScale) * verticalLength / (maxScale - minScale));
-        coordinate = std::min(coordinate, verticalLength);
-        coordinate = std::max(coordinate, 0);
-        //int level = durations[i]*verticalLength/maximum;
-        for (size_t j = 0; j < coordinate; j++)
-        {
-            filled[i][j] = true;
-        }        
-    }    
-
-    for (size_t i = verticalLength - 1; i > 0; i--)
-    {
-        for (size_t j = 0; j < durations.size(); j++)
-        {
-            if (filled[j][i])
-            {
-                std::cout << '|';
-            }
-            else
-            {
-                std::cout << ' ';
-            }
-        }        
-        
-        std::cout << std::endl;
-    }    
+    return spaces;
 }
 
 bool isOverlappingHyperslabInVector(std::vector<ProfiledReadAccess> spaces, hsize_t offset[2], hsize_t size[2])

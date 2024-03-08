@@ -15,10 +15,12 @@ set(SOURCES
     sources/test.cpp
 )
 
+set(ENVIRONMENT "home")
 set(LIBRARIES_ROOT "~/libraries/")
+#set(HDF5_CPP_LIBRARY_FILE "libhdf5_cpp_debug.so")
+#set(HDF5_LIBRARY_FILE "libhdf5_debug.so")
 set(HDF5_CPP_LIBRARY_FILE "libhdf5_cpp.so")
 set(HDF5_LIBRARY_FILE "libhdf5.so")
-
 
 set(HDF5_VARIANT "hdf5_no_staging")
 
@@ -34,6 +36,8 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 include_directories(${HDF5_INCLUDE_DIR})
 add_executable(${PROJECT_NAME}_${HDF5_VARIANT} ${SOURCES})
 target_link_libraries(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ${HDF5_CPP_OBJECT} ${HDF5_OBJECT})
+target_compile_definitions(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ENVIRONMENT="${ENVIRONMENT}")
+target_compile_definitions(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE HDF5_VARIANT="${HDF5_VARIANT}")
 
 
 set(HDF5_VARIANT "hdf5_staging_memory_optimized")
@@ -49,6 +53,8 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 include_directories(${HDF5_INCLUDE_DIR})
 add_executable(${PROJECT_NAME}_${HDF5_VARIANT} ${SOURCES})
 target_link_libraries(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ${HDF5_CPP_OBJECT} ${HDF5_OBJECT})
+target_compile_definitions(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ENVIRONMENT="${ENVIRONMENT}")
+target_compile_definitions(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE HDF5_VARIANT="${HDF5_VARIANT}")
 
 
 set(HDF5_VARIANT "hdf5_staging_disk_optimized")
@@ -65,3 +71,5 @@ set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 include_directories(${HDF5_INCLUDE_DIR})
 add_executable(${PROJECT_NAME}_${HDF5_VARIANT} ${SOURCES})
 target_link_libraries(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ${HDF5_CPP_OBJECT} ${HDF5_OBJECT})
+target_compile_definitions(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE ENVIRONMENT="${ENVIRONMENT}")
+target_compile_definitions(${PROJECT_NAME}_${HDF5_VARIANT} PRIVATE HDF5_VARIANT="${HDF5_VARIANT}")
