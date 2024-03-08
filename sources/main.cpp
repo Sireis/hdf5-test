@@ -654,13 +654,13 @@ DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, 
     }
     else if (layout == Layout::VERTICAL_OFFSET)
     {
-        newSpace.offset[0] = baseDataSpace.offset[0];
-        newSpace.offset[1] = baseDataSpace.offset[1] + offset;
+        newSpace.offset[0] = baseDataSpace.offset[0] + offset;
+        newSpace.offset[1] = baseDataSpace.offset[1];
     }
     else if (layout == Layout::HORIZONTAL_OFFSET)
     {
-        newSpace.offset[0] = baseDataSpace.offset[0] + offset;
-        newSpace.offset[1] = baseDataSpace.offset[1];
+        newSpace.offset[0] = baseDataSpace.offset[0];
+        newSpace.offset[1] = baseDataSpace.offset[1] + offset;
     }
     else if (layout == Layout::OFFSET)
     {

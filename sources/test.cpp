@@ -69,14 +69,14 @@ std::unique_ptr<uint64_t[]> generateTestData(int rank, hsize_t* dimensions)
 bool verifyBuffer(uint64_t* buffer, size_t rank, hsize_t *sourceDimensions, hsize_t *sourceOffset, hsize_t *targetDimensions, hsize_t *targetOffset, hsize_t *targetSize)
 {    
     int counter = 0;
-    for (hsize_t y = 0; y < sourceDimensions[1]; y++)
+    for (hsize_t y = 0; y < sourceDimensions[0]; y++)
     {
-        for (hsize_t x = 0; x < sourceDimensions[0]; x++)
+        for (hsize_t x = 0; x < sourceDimensions[1]; x++)
         {
-            if (x >= sourceOffset[0] && x < (sourceOffset[0] + targetSize[0])
-            &&  y >= sourceOffset[1] && y < (sourceOffset[1] + targetSize[1]))
+            if (x >= sourceOffset[1] && x < (sourceOffset[1] + targetSize[1])
+            &&  y >= sourceOffset[0] && y < (sourceOffset[0] + targetSize[0]))
             {
-                hsize_t targetCoordinates[] = {targetOffset[0] + x - sourceOffset[0], targetOffset[1] + y - sourceOffset[1]};
+                hsize_t targetCoordinates[] = {targetOffset[0] + y - sourceOffset[0], targetOffset[1] + x - sourceOffset[1]};
                 volatile size_t index = getLinearIndex(targetCoordinates, targetDimensions, rank);
                 volatile uint64_t expected = ((uint64_t)counter << 32) | (x << 16) | (y << 0);
                 uint64_t found = buffer[index];
@@ -150,7 +150,7 @@ hsize_t getLinearIndex(hsize_t* coordinates, hsize_t* arrayDimensions, hsize_t r
 {
     hsize_t address = 0;
     hsize_t multiplier = 1;
-    for (uint i = 0; i < rank; ++i)
+    for (int i = rank - 1; i >= 0; --i)
     {
         address += coordinates[i] * multiplier;
         multiplier *= arrayDimensions[i];
