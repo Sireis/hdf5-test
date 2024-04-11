@@ -35,6 +35,7 @@ struct Scenario
     int chunkSize;
     uint64_t cacheLimit;
     EvictionStrategy evictionStrategy;
+    bool bufferedRead;
 };
 
 struct ProfileResult 
@@ -90,6 +91,7 @@ int main(void)
         .chunkSize = 1024,
         .cacheLimit = 2ULL*1024*1024*1024,
         .evictionStrategy = EvictionStrategy::FIFO,
+        .bufferedRead = false,
     };
     
     Scenario s2 = {
@@ -109,6 +111,7 @@ int main(void)
         .chunkSize = 1024,
         .cacheLimit = 2ULL*1024*1024*1024,
         .evictionStrategy = EvictionStrategy::FIFO,
+        .bufferedRead = false,
     };
     
     Scenario t1 = {
@@ -128,19 +131,20 @@ int main(void)
         .chunkSize = 4,
         .cacheLimit = 2ULL*1024*1024*1024,
         .evictionStrategy = EvictionStrategy::FIFO,
+        .bufferedRead = false,
     };
 
     //std::vector<Scenario> scenarios = {t1};
     //std::vector<Scenario> scenarios = {s2, s1};
     DataSpace fileSpace = {
         .offset = {0, 0},
-        .size = {8, 8},
+        .size = {16*1024, 16*1024},
     };
     DataSpace testSpace = {
         .offset = {0, 0},
-        .size = {4, 4},
+        .size = {256, 256},
     };
-    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 1);
+    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 10);
     //scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
@@ -148,6 +152,7 @@ int main(void)
 
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount)
 {
+    ReadType readType = ReadType::UNBUFFERED_READ;
     AccessPattern accessPattern = AccessPattern::ALWAYS_THE_SAME;
     CacheShape cacheShape = CacheShape::SQUARE;
     Layout layout = Layout::ALIGNED;
@@ -157,57 +162,62 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
 
     std::vector<Scenario> scenarios;
     Scenario s;
-    for (accessPattern = AccessPattern::ALWAYS_THE_SAME; accessPattern < AccessPattern::COUNT; ++accessPattern)
+    for (readType = ReadType::UNBUFFERED_READ; readType < ReadType::COUNT; ++readType)
     {
-        for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
-        {            
-            if (cacheShape != CacheShape::LINE
-            && 
-            (accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL
-            || accessPattern == AccessPattern::COHERENT_REGION))
-            {
-                continue;
-            }
+        for (accessPattern = AccessPattern::ALWAYS_THE_SAME; accessPattern < AccessPattern::COUNT; ++accessPattern)
+        {
+            for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
+            {            
+                //if (cacheShape != CacheShape::LINE
+                //&& 
+                //(accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL
+                //|| accessPattern == AccessPattern::COHERENT_REGION))
+                //{
+                //    continue;
+                //}
 
-            for (layout = Layout::VERTICAL_OFFSET; layout < Layout::COUNT; ++layout)
-            {
-                if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::RANDOM_PATTERN
-                || accessPattern == AccessPattern::COHERENT_REGION
-                || accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL) 
-                && layout != Layout::OFFSET)
+                for (layout = Layout::OFFSET; layout < Layout::COUNT; ++layout)
                 {
-                    continue;
-                }
-                
-                for (chunkSize = CacheChunkSize::SMALL; chunkSize < CacheChunkSize::COUNT; ++chunkSize)
-                {
-                    if (cacheShape == CacheShape::LINE && chunkSize != CacheChunkSize::LARGE)
+                    if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::RANDOM_PATTERN
+                    || accessPattern == AccessPattern::COHERENT_REGION
+                    || accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL) 
+                    && layout != Layout::OFFSET)
                     {
                         continue;
                     }
 
-                    for (cacheLimit = CacheLimit::ENOUGH_FACTOR_8; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                    for (chunkSize = CacheChunkSize::SMALL; chunkSize < CacheChunkSize::COUNT; ++chunkSize)
                     {
-                        for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
+                        if (cacheShape == CacheShape::LINE && chunkSize != CacheChunkSize::LARGE)
                         {
+                            continue;
+                        }
 
-                            s = {
-                                .name = toString(accessPattern) + "-" + toString(cacheShape) + "-" + toString(layout) 
-                                    + "-" + toString(chunkSize) + "-" + toString(cacheLimit) + "-" + toString(evictionStrategy),
-                                //.name = toString(cacheShape) 
-                                //    + "::" + toString(chunkSize) + "::" + toString(cacheLimit) + "::" + toString(evictionStrategy),
-                                .fileSpace = fileSpace,
-                                .testSpace = createDataSpace(testSpace, layout, chunkSize),
-                                .accessPattern = accessPattern,
-                                .accessAmount = accessAmount,
-                                .repetitions = repetitions,
-                                .cacheShape = cacheShape,
-                                .chunkSize = toValue(chunkSize),
-                                .cacheLimit = toValue(cacheLimit, testSpace),
-                                .evictionStrategy = evictionStrategy,
-                            };
+                        for (cacheLimit = CacheLimit::ENOUGH_FACTOR_8; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                        {
+                            for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
+                            {
 
-                            scenarios.push_back(s);
+                                s = {
+                                    .name = toString(readType) + "-" + toString(accessPattern) + "-" + toString(cacheShape) + "-" 
+                                        + toString(layout) + "-" + toString(chunkSize) + "-" + toString(cacheLimit) + "-" 
+                                        + toString(evictionStrategy),
+                                    //.name = toString(cacheShape) 
+                                    //    + "::" + toString(chunkSize) + "::" + toString(cacheLimit) + "::" + toString(evictionStrategy),
+                                    .fileSpace = fileSpace,
+                                    .testSpace = createDataSpace(testSpace, layout, chunkSize),
+                                    .accessPattern = accessPattern,
+                                    .accessAmount = accessAmount,
+                                    .repetitions = repetitions,
+                                    .cacheShape = cacheShape,
+                                    .chunkSize = toValue(chunkSize),
+                                    .cacheLimit = toValue(cacheLimit, testSpace),
+                                    .evictionStrategy = evictionStrategy,
+                                    .bufferedRead = readType == ReadType::BUFFERED_READ,
+                                };
+
+                                scenarios.push_back(s);
+                            }
                         }
                     }
                 }
@@ -237,6 +247,7 @@ void runScenario(Scenario scenario, bool isSilent)
     setenv("STAGING_CHUNK_SIZE", std::to_string(scenario.chunkSize).c_str(), 1);
     setenv("STAGING_CACHE_LIMIT", std::to_string(scenario.cacheLimit).c_str(), 1);
     setenv("STAGING_EVICTION_STRATEGY", toString(scenario.evictionStrategy).c_str(), 1);
+    setenv("STAGING_BUFFERED_READ", std::to_string(scenario.bufferedRead).c_str(), 1);
 
     H5::H5File file = useTestFile(2, scenario.fileSpace.size);
         
@@ -266,7 +277,7 @@ void runScenario(Scenario scenario, bool isSilent)
 
         hsize_t printOffset[] = {0, 0};
         hsize_t printSize[] = {8, 8};
-        printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
+        //printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
     }
 
     if (!std::all_of(profileResult.validationResults.begin(), profileResult.validationResults.end(), [](bool b) {return b;}))
@@ -281,11 +292,11 @@ void runScenario(Scenario scenario, bool isSilent)
     std::string environment = ENVIRONMENT;
     if (environment.compare("home") == 0) 
     {
-        //saveToFileAsDat("/mnt/a/Repositories/Hagen/Masterarbeit-Praktische-Informatik/assets/data/", profileResult.durations, scenario.name);
+        saveToFileAsDat("/mnt/a/Repositories/Hagen/Masterarbeit-Praktische-Informatik/assets/data/", profileResult.durations, scenario.name);
     }
     else if (environment.compare("jusuf") == 0) 
     {
-        //saveToFileAsDat("/p/home/jusers/wiesmann1/jusuf/results", profileResult.durations, scenario.name);
+        saveToFileAsDat("/p/home/jusers/wiesmann1/jusuf/results", profileResult.durations, scenario.name);
     }    
 
     delete[] buffer;    
@@ -626,6 +637,8 @@ uint64_t toValue(CacheLimit value, DataSpace dataSpace)
 {
     uint64_t area = dataSpace.size[0] * dataSpace.size[1] * 8;
 
+    return 4ULL*1024*1024*1024;
+
     switch (value)
     {
     case CacheLimit::TOO_LOW_FACTOR_0_1: return area / 10;
@@ -642,7 +655,7 @@ DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, 
 {
     DataSpace newSpace;
     int offset = 0.1 * toValue(chunkSize);
-    offset = 2;
+    offset = (offset < 2) ? 2 : offset;
     
     newSpace.size[0] = baseDataSpace.size[0];
     newSpace.size[1] = baseDataSpace.size[1];

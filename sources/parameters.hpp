@@ -4,6 +4,31 @@
 
 #define MAKE_MEMBER(a) a,
 
+#define FOR_ALL_READ_TYPES(apply) \
+    apply(UNBUFFERED_READ) \
+    apply(BUFFERED_READ) \
+    apply(COUNT)
+
+enum class ReadType {
+    FOR_ALL_READ_TYPES(MAKE_MEMBER)
+};
+
+ReadType operator++(ReadType& value) 
+{
+    return value = static_cast<ReadType>(static_cast<int>(value) + 1);
+}
+
+const std::string toString(ReadType value)
+{
+    switch (value)
+    {
+        #define CASE_STRINGIFY(a) case ReadType::a: return #a;
+        FOR_ALL_READ_TYPES(CASE_STRINGIFY)
+        default: return "Error";
+        #undef CASE_STRINGIFY
+    }
+}
+
 #define FOR_ALL_ACCESS_PATTERNS(apply) \
     apply(ALWAYS_THE_SAME) \
     apply(FULLY_RANDOM) \
