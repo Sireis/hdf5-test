@@ -40,8 +40,8 @@ struct Scenario
 
 struct ProfileResult 
 {
-    std::vector<int> durations;
-    std::vector<bool> validationResults;
+    std::vector<std::vector<int>> durations;
+    std::vector<std::vector<bool>> validationResults;
 };
 
 struct ProfiledReadAccess
@@ -54,10 +54,10 @@ void runScenario(Scenario scenario, bool isSilent);
 void runScenarios(std::vector<Scenario> scenarios, bool isSilent);
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount);
 void scrambleScenarios(std::vector<Scenario> &scenarios);
-ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces);
+void profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces, ProfileResult* profileResult);
 void printAsCSV(uint8_t buffer[], size_t size);
 void printAsDat(std::string filePath, std::vector<int> list);
-void saveToFileAsDat(std::string filePath, std::vector<int> list, std::string name);
+void saveToFileAsDat(std::string filePath, std::vector<std::vector<int>> list, std::string name);
 std::string fill(std::string string, char filler, int count);
 std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &dataset);
 void printTable(std::vector<int> &durations, hsize_t sizes[]);
@@ -144,7 +144,7 @@ int main(void)
         .offset = {0, 0},
         .size = {256, 256},
     };
-    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 1, 10);
+    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
     //scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
@@ -176,11 +176,9 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                 //    continue;
                 //}
 
-                for (layout = Layout::OFFSET; layout < Layout::COUNT; ++layout)
+                for (layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
                 {
-                    if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::RANDOM_PATTERN
-                    || accessPattern == AccessPattern::COHERENT_REGION
-                    || accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL) 
+                    if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::RANDOM_PATTERN) 
                     && layout != Layout::OFFSET)
                     {
                         continue;
@@ -255,38 +253,48 @@ void runScenario(Scenario scenario, bool isSilent)
     H5::DataType dataType = dataset.getDataType();
 
     std::vector<ProfiledReadAccess> spaces = createAccesses(scenario, dataset);
+    dataset.close();
 
     std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
 
-    hsize_t memorySpaceSize[] = {scenario.testSpace.size[0] + scenario.testSpace.offset[0], scenario.testSpace.size[1] + scenario.testSpace.offset[1]};
-    size_t size = (memorySpaceSize[0] * memorySpaceSize[1]);
-    uint64_t* buffer = new uint64_t[size];
-    std::memset(buffer, 0, size * sizeof(uint64_t));
-    auto profileResult = profiledRead((uint8_t*)buffer, dataset, dataType, spaces);
-    dataset.close();
-
-    if (!isSilent)
+    ProfileResult profileResult;
+    for (int repetition = 0; repetition < scenario.repetitions; repetition++)
     {
-        printTable(profileResult.durations, scenario.testSpace.size);
-        std::cout << std::endl;
-        printList(profileResult.durations, std::min((int)profileResult.durations.size(), 12));
-        std::cout << std::endl;
-        printGraph(profileResult.durations, *std::min_element(profileResult.durations.begin(), profileResult.durations.end()), *std::max_element(profileResult.durations.begin(), profileResult.durations.end()));
-        std::cout << std::endl;
-        printAsDat(" ", profileResult.durations);
+        hsize_t memorySpaceSize[] = {scenario.testSpace.size[0] + scenario.testSpace.offset[0], scenario.testSpace.size[1] + scenario.testSpace.offset[1]};
+        size_t size = (memorySpaceSize[0] * memorySpaceSize[1]);
+        uint64_t* buffer = new uint64_t[size];
+        std::memset(buffer, 0, size * sizeof(uint64_t));
+        H5::DataSet dataset = file.openDataSet("testData");
+        profiledRead((uint8_t*)buffer, dataset, dataType, spaces, &profileResult);
+        dataset.close();
 
-        hsize_t printOffset[] = {0, 0};
-        hsize_t printSize[] = {8, 8};
-        //printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
-    }
+        if (!isSilent)
+        {
+            printTable(profileResult.durations.back(), scenario.testSpace.size);
+            std::cout << std::endl;
+            printList(profileResult.durations.back(), std::min((int)profileResult.durations.back().size(), 12));
+            std::cout << std::endl;
+            printGraph(profileResult.durations.back(), *std::min_element(profileResult.durations.back().begin(), profileResult.durations.back().end()), *std::max_element(profileResult.durations.back().begin(), profileResult.durations.back().end()));
+            std::cout << std::endl;
+            printAsDat(" ", profileResult.durations.back());
 
-    if (!std::all_of(profileResult.validationResults.begin(), profileResult.validationResults.end(), [](bool b) {return b;}))
-    {
-        std::cout << "FAIL" << std::endl;
-    }
-    else
-    {
-        std::cout << "PASS" << std::endl;
+            hsize_t printOffset[] = {0, 0};
+            hsize_t printSize[] = {8, 8};
+            //printBuffer(buffer, 2, scenario.testSpace.size, printOffset, printSize);
+        }
+
+        std::cout << repetition << " ";
+
+        if (!std::all_of(profileResult.validationResults.back().begin(), profileResult.validationResults.back().end(), [](bool b) { return b; }))
+        {
+            std::cout << "FAIL" << std::endl;
+        }
+        else
+        {
+            std::cout << "PASS" << std::endl;
+        }
+
+        delete[] buffer;   
     }
 
     std::string environment = ENVIRONMENT;
@@ -298,11 +306,10 @@ void runScenario(Scenario scenario, bool isSilent)
     {
         saveToFileAsDat("/p/home/jusers/wiesmann1/jusuf/results", profileResult.durations, scenario.name);
     }    
-
-    delete[] buffer;    
+ 
 }
 
-ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces)
+void profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces, ProfileResult* profileResult)
 {        
     steady_clock::time_point start = steady_clock::now();
     steady_clock::time_point end = steady_clock::now();
@@ -314,10 +321,11 @@ ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType d
     int minimumIndex = 0;
     int maximumIndex = 0;
 
-    ProfileResult profileResult;
+    profileResult->durations.emplace_back(std::vector<int>());
+    profileResult->validationResults.emplace_back(std::vector<bool>());
 
-    profileResult.durations.reserve(spaces.size());
-    profileResult.validationResults.reserve(spaces.size());
+    profileResult->durations.back().reserve(spaces.size());
+    profileResult->validationResults.back().reserve(spaces.size());
 
     for (ProfiledReadAccess access : spaces)
     {        
@@ -341,11 +349,9 @@ ProfileResult profiledRead(uint8_t buffer[], H5::DataSet dataset, H5::DataType d
         end = steady_clock::now();
 
         microseconds duration = duration_cast<microseconds>(end - start);
-        profileResult.durations.push_back(duration.count());           
-        profileResult.validationResults.push_back(verifyBuffer((uint64_t*)buffer, 2, sourceDimensions, sourceOffset, targetDimensions, targetOffset, targetSize));
+        profileResult->durations.back().push_back(duration.count());           
+        profileResult->validationResults.back().push_back(verifyBuffer((uint64_t*)buffer, 2, sourceDimensions, sourceOffset, targetDimensions, targetOffset, targetSize));
     }
-
-    return profileResult;
 }
 
 void printAsCSV(uint8_t buffer[], size_t size)
@@ -364,17 +370,27 @@ void printAsDat(std::string filePath, std::vector<int> list)
     }
 }
 
-void saveToFileAsDat(std::string filePath, std::vector<int> list, std::string name)
+void saveToFileAsDat(std::string filePath, std::vector<std::vector<int>> matrix, std::string name)
 {
     std::filesystem::path directoryPath = std::filesystem::path(filePath) / name / ENVIRONMENT;
     std::filesystem::create_directories(directoryPath);
     std::string fullPathString = (directoryPath / HDF5_VARIANT).string();
 
+    int width = matrix.size();
+    int height = matrix[0].size();
+
     std::ofstream file;
     file.open(fullPathString + ".dat");
-    for (int i = 0; i < list.size(); ++i)
+
+    for (int i = 0; i < height; ++i)
     {
-        file << i << " " << list[i] << std::endl;
+        file << i << " ";
+        for (int  j = 0; j < width; j++)
+        {
+            /* code */
+            file << matrix.at(j).at(i) << " ";
+        }        
+        file << std::endl;
     }
     file.close();
 }
@@ -531,16 +547,16 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
     else if (scenario.accessPattern == AccessPattern::COHERENT_REGION)
     {
         hsize_t offset[2]  = {scenario.testSpace.offset[0], scenario.testSpace.offset[1]};
-
+        
         for (int i = 0; i < scenario.accessAmount; i++) 
         {
             if (i > 0)
             {
-                offset[0] += scenario.testSpace.size[0];
-                if (offset[0] + scenario.testSpace.size[0] > scenario.fileSpace.size[0])
+                offset[1] += scenario.testSpace.size[1];
+                if (offset[1] + scenario.testSpace.size[1] > scenario.fileSpace.size[1])
                 {
-                    offset[0] = scenario.testSpace.offset[0];
-                    offset[1] += scenario.testSpace.size[1];
+                    offset[1] = scenario.testSpace.offset[1];
+                    offset[0] += scenario.testSpace.size[0];
                 }
             }
 
@@ -561,16 +577,16 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
     else if (scenario.accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL)
     {
         hsize_t offset[2]  = {scenario.testSpace.offset[0], scenario.testSpace.offset[1]};
-        
+
         for (int i = 0; i < scenario.accessAmount; i++) 
         {
             if (i > 0)
             {
-                offset[1] += scenario.testSpace.size[1];
-                if (offset[1] + scenario.testSpace.size[1] > scenario.fileSpace.size[1])
+                offset[0] += scenario.testSpace.size[0];
+                if (offset[0] + scenario.testSpace.size[0] > scenario.fileSpace.size[0])
                 {
-                    offset[1] = scenario.testSpace.offset[1];
-                    offset[0] += scenario.testSpace.size[0];
+                    offset[0] = scenario.testSpace.offset[0];
+                    offset[1] += scenario.testSpace.size[1];
                 }
             }
 
