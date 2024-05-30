@@ -33,6 +33,7 @@ const std::string toString(ReadType value)
     apply(ALWAYS_THE_SAME) \
     apply(FULLY_RANDOM) \
     apply(RANDOM_PATTERN) \
+    apply(BEYOND_DATASETS) \
     apply(COHERENT_REGION) \
     apply(COHERENT_REGION_UNFAVOURABLE_TRAVERSAL) \
     apply(COUNT)
