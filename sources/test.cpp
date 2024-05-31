@@ -9,7 +9,9 @@
 
 H5::H5File useTestFile(int rank, hsize_t* dimensions, int datasetCount)
 {
-    std::filesystem::path path("../assets/datasets/generated/");
+    char* basePathString = std::getenv("SCRATCH");
+    std::filesystem::path basePath(basePathString);
+    std::filesystem::path path = basePath / "wiesmann1/assets/datasets/generated/";
     std::string fileName = createFileName(rank, dimensions, datasetCount);
 
     std::filesystem::create_directories(std::filesystem::path(path));

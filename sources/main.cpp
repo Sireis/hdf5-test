@@ -315,15 +315,11 @@ void runScenario(Scenario scenario, bool isSilent)
     }
 
     std::string environment = ENVIRONMENT;
-    if (environment.compare("home") == 0) 
-    {
-        saveToFileAsDat("/mnt/a/Repositories/Hagen/Masterarbeit-Praktische-Informatik/assets/data/", profileResult.durations, scenario.name);
-    }
-    else if (environment.compare("jusuf") == 0) 
-    {
-        saveToFileAsDat("/p/home/jusers/wiesmann1/jusuf/results", profileResult.durations, scenario.name);
-    }    
- 
+
+    char* basePathString = std::getenv("HOME");
+    std::filesystem::path basePath(basePathString);
+    std::filesystem::path path = basePath / "results";
+    saveToFileAsDat(path.string(), profileResult.durations, scenario.name);
 }
 
 void profiledRead(uint8_t buffer[], std::vector<H5::DataSet>& datasets, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces, ProfileResult* profileResult)
