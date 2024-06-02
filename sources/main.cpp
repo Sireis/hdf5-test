@@ -516,6 +516,7 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
         ProfiledReadAccess access = {
             .memorySpace = memorySpace,
             .dataSpace = dataSpace,
+            .datasetIndex = 0,
         };
 
         for (int i = 0; i < scenario.accessAmount; i++) {
@@ -538,6 +539,7 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
             ProfiledReadAccess access = {
                 .memorySpace = memorySpace,
                 .dataSpace = dataSpace,
+                .datasetIndex = 0,
             };
 
             spaces.push_back(access);
@@ -559,7 +561,7 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
             ProfiledReadAccess access = {
                 .memorySpace = memorySpace,
                 .dataSpace = dataSpace,
-                .datasetIndex = rand() % scenario.datasetCount,
+                .datasetIndex = 0,
             };
 
             spaces.push_back(access);
@@ -567,31 +569,33 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
     }
     else if (scenario.accessPattern == AccessPattern::BEYOND_DATASETS)
     {
-        hsize_t offset[2]  = {scenario.testSpace.offset[0], scenario.testSpace.offset[1]};
-        
-        for (int i = 0; i < scenario.accessAmount; i++) 
+        int accessCounter = 0;
+        int currentDatasetIndex = 0;
+        int totalAccessesEachDataset = scenario.accessAmount / scenario.datasetCount;
+        for (int i = 0; i < scenario.accessAmount; i++)
         {
-            if (i > 0)
-            {
-                offset[1] += scenario.testSpace.size[1];
-                if (offset[1] + scenario.testSpace.size[1] > scenario.fileSpace.size[1])
-                {
-                    offset[1] = scenario.testSpace.offset[1];
-                    offset[0] += scenario.testSpace.size[0];
-                }
-            }
+            hsize_t randomOffset[2] = {rand() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), rand() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
+            hsize_t noOffset[2] = {0, 0};
 
             H5::DataSpace dataSpace = dataset.getSpace();
-            dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, offset);
+            dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, randomOffset);
 
             H5::DataSpace memorySpace(2, memorySpaceSize);
-            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, noOffset);
 
+            if (accessCounter == totalAccessesEachDataset)
+            {
+                currentDatasetIndex = (currentDatasetIndex + 1) % scenario.datasetCount;
+                accessCounter = 0;
+            }
+            accessCounter++;
+            
             ProfiledReadAccess access = {
                 .memorySpace = memorySpace,
                 .dataSpace = dataSpace,
+                .datasetIndex = currentDatasetIndex,
             };
-        
+
             spaces.push_back(access);
         }
     }
@@ -620,6 +624,7 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
             ProfiledReadAccess access = {
                 .memorySpace = memorySpace,
                 .dataSpace = dataSpace,
+                .datasetIndex = 0,
             };
         
             spaces.push_back(access);
@@ -650,6 +655,7 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
             ProfiledReadAccess access = {
                 .memorySpace = memorySpace,
                 .dataSpace = dataSpace,
+                .datasetIndex = 0,
             };
         
             spaces.push_back(access);
