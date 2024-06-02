@@ -248,6 +248,9 @@ void runScenarios(std::vector<Scenario> scenarios, bool isSilent)
 
 void runScenario(Scenario scenario, bool isSilent)
 {
+    std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
+    auto start = steady_clock::now();
+
     setenv("STAGING_CACHE_SHAPE", toString(scenario.cacheShape).c_str(), 1);
     setenv("STAGING_CHUNK_SIZE", std::to_string(scenario.chunkSize).c_str(), 1);
     setenv("STAGING_CACHE_LIMIT", std::to_string(scenario.cacheLimit).c_str(), 1);
@@ -255,14 +258,15 @@ void runScenario(Scenario scenario, bool isSilent)
     setenv("STAGING_BUFFERED_READ", std::to_string(scenario.bufferedRead).c_str(), 1);
 
     H5::H5File file = useTestFile(2, scenario.fileSpace.size, scenario.datasetCount);
+    
+    auto middle0 = steady_clock::now();
+    std::cout << "File created in " << duration_cast<milliseconds>(middle0 - start).count() << " ms" << std::endl;
         
     H5::DataSet dataset = file.openDataSet("testData_0");
     H5::DataType dataType = dataset.getDataType();
 
     std::vector<ProfiledReadAccess> spaces = createAccesses(scenario, dataset);
     dataset.close();
-
-    std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
 
     ProfileResult profileResult;
     for (int repetition = 0; repetition < scenario.repetitions; repetition++)
@@ -301,15 +305,18 @@ void runScenario(Scenario scenario, bool isSilent)
         }
 
         std::cout << repetition << " ";
-
+        
         if (!std::all_of(profileResult.validationResults.back().begin(), profileResult.validationResults.back().end(), [](bool b) { return b; }))
         {
-            std::cout << "FAIL" << std::endl;
+            std::cout << "FAIL";
         }
         else
         {
-            std::cout << "PASS" << std::endl;
+            std::cout << "PASS";
         }
+        
+        int totalDuration = std::accumulate(profileResult.durations.back().begin(), profileResult.durations.back().end(), 0);
+        std::cout << " (in " << totalDuration/1000 << " ms)" << std::endl;
 
         delete[] buffer;   
     }
@@ -320,6 +327,11 @@ void runScenario(Scenario scenario, bool isSilent)
     std::filesystem::path basePath(basePathString);
     std::filesystem::path path = basePath / "results";
     saveToFileAsDat(path.string(), profileResult.durations, scenario.name);
+
+    auto end = steady_clock::now();
+    auto duration = duration_cast<milliseconds>(end - start);
+
+    std::cout << "Total test time: " << duration.count() << " ms" << std::endl;
 }
 
 void profiledRead(uint8_t buffer[], std::vector<H5::DataSet>& datasets, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces, ProfileResult* profileResult)
