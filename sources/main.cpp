@@ -71,7 +71,7 @@ const std::string toString(CacheShape value);
 bool isOverlappingHyperslabInVector(std::vector<ProfiledReadAccess> spaces, hsize_t offset[2], hsize_t size[2]);
 bool isOverlappingHyperslab(H5::DataSpace dataSpace1, hsize_t offset2[2], hsize_t opposite2[2]);
 int toValue(CacheChunkSize value);
-uint64_t toValue(CacheLimit value, DataSpace dataSpace);
+uint64_t toValue(CacheLimit value, DataSpace dataSpace, int accessAmount);
 int toValue(AccessPattern pattern);
 DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, const CacheChunkSize &chunkSize);
 
@@ -197,7 +197,7 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                             continue;
                         }
 
-                        for (cacheLimit = CacheLimit::ENOUGH_FACTOR_8; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                        for (cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_1; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
                         {
                             for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
                             {
@@ -216,7 +216,7 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                                     .datasetCount = toValue(accessPattern),
                                     .cacheShape = cacheShape,
                                     .chunkSize = toValue(chunkSize),
-                                    .cacheLimit = toValue(cacheLimit, testSpace),
+                                    .cacheLimit = toValue(cacheLimit, testSpace, accessAmount),
                                     .evictionStrategy = evictionStrategy,
                                     .bufferedRead = readType == ReadType::BUFFERED_READ,
                                 };
@@ -706,20 +706,17 @@ int toValue(CacheChunkSize value)
     }
 }
 
-uint64_t toValue(CacheLimit value, DataSpace dataSpace)
+uint64_t toValue(CacheLimit value, DataSpace dataSpace, int accessAmount)
 {
     uint64_t area = dataSpace.size[0] * dataSpace.size[1] * 8;
-
-    return 4ULL*1024*1024*1024;
+    uint64_t baseValue = area * accessAmount;
 
     switch (value)
     {
-    case CacheLimit::TOO_LOW_FACTOR_0_1: return area / 10;
-    case CacheLimit::TOO_LOW_FACTOR_0_5: return area / 2;
-    case CacheLimit::TOO_LOW_FACTOR_0_9: return area * 9 / 10;
-    case CacheLimit::ENOUGH_FACTOR_1: return area * 1;
-    case CacheLimit::ENOUGH_FACTOR_5: return area * 5;
-    case CacheLimit::ENOUGH_FACTOR_8: return area * 8;
+    case CacheLimit::TOO_LOW_FACTOR_0_1: return baseValue * 1 / 10;
+    case CacheLimit::TOO_LOW_FACTOR_0_9: return baseValue * 9 / 10;
+    case CacheLimit::ENOUGH_FACTOR_1: return baseValue * 1;
+    case CacheLimit::ENOUGH_FACTOR_5: return baseValue * 5;
     default: return -1;
     }
 }
