@@ -197,7 +197,7 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                             continue;
                         }
 
-                        for (cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_1; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                        for (cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_2; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
                         {
                             for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
                             {
@@ -308,7 +308,7 @@ void runScenario(Scenario scenario, bool isSilent)
         
         if (!std::all_of(profileResult.validationResults.back().begin(), profileResult.validationResults.back().end(), [](bool b) { return b; }))
         {
-            std::cout << "FAIL";
+            std::cout << "FAIL -------------";
         }
         else
         {
@@ -713,7 +713,7 @@ uint64_t toValue(CacheLimit value, DataSpace dataSpace, int accessAmount)
 
     switch (value)
     {
-    case CacheLimit::TOO_LOW_FACTOR_0_1: return baseValue * 1 / 10;
+    case CacheLimit::TOO_LOW_FACTOR_0_2: return baseValue * 2 / 10;
     case CacheLimit::TOO_LOW_FACTOR_0_9: return baseValue * 9 / 10;
     case CacheLimit::ENOUGH_FACTOR_1: return baseValue * 1;
     case CacheLimit::ENOUGH_FACTOR_5: return baseValue * 5;

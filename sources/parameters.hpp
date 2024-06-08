@@ -137,7 +137,7 @@ const std::string toString(CacheChunkSize value)
 }
 
 #define FOR_ALL_CACHE_LIMITS(apply) \
-    apply(TOO_LOW_FACTOR_0_1) \
+    apply(TOO_LOW_FACTOR_0_2) \
     apply(TOO_LOW_FACTOR_0_9) \
     apply(ENOUGH_FACTOR_1) \
     apply(ENOUGH_FACTOR_5) \

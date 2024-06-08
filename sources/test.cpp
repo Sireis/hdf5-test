@@ -93,7 +93,7 @@ bool verifyBuffer(uint64_t* buffer, int salt, size_t rank, hsize_t *sourceDimens
 
                 if (found != expected)
                 {
-                    std::cout << "[" << y << "|" << x << "]" << std::endl;
+                    //std::cout << "[" << y << "|" << x << "]" << std::endl;
                     return false;
                 }                
             }
