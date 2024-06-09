@@ -35,6 +35,7 @@ const std::string toString(ReadType value)
     apply(RANDOM_PATTERN) \
     apply(BEYOND_DATASETS) \
     apply(COHERENT_REGION) \
+    apply(COHERENT_REGION_REPETITIVE) \
     apply(COHERENT_REGION_UNFAVOURABLE_TRAVERSAL) \
     apply(COUNT)
     
@@ -137,10 +138,9 @@ const std::string toString(CacheChunkSize value)
 }
 
 #define FOR_ALL_CACHE_LIMITS(apply) \
-    apply(TOO_LOW_FACTOR_0_2) \
-    apply(TOO_LOW_FACTOR_0_9) \
-    apply(ENOUGH_FACTOR_1) \
-    apply(ENOUGH_FACTOR_5) \
+    apply(TOO_LOW_FACTOR_0_25) \
+    apply(TOO_LOW_FACTOR_0_34) \
+    apply(ENOUGH_FACTOR_10) \
     apply(COUNT) 
 
 enum class CacheLimit {

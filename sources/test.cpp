@@ -76,7 +76,7 @@ std::unique_ptr<uint64_t[]> generateTestData(int rank, hsize_t* dimensions, uint
 
 bool verifyBuffer(uint64_t* buffer, int salt, size_t rank, hsize_t *sourceDimensions, hsize_t *sourceOffset, hsize_t *targetDimensions, hsize_t *targetOffset, hsize_t *targetSize)
 {    
-    int counter = 0;
+    bool isBad = false;
     for (hsize_t y = 0; y < (sourceOffset[1] + targetSize[1]); y++)
     {
         for (hsize_t x = 0; x < (sourceOffset[0] + targetSize[0]); x++)
@@ -93,16 +93,15 @@ bool verifyBuffer(uint64_t* buffer, int salt, size_t rank, hsize_t *sourceDimens
 
                 if (found != expected)
                 {
-                    //std::cout << "[" << y << "|" << x << "]" << std::endl;
+                    //std::cout << "[" << y/64 << "|" << x/64 << "]" << std::endl;
+                    isBad = true;
                     return false;
                 }                
             }
-
-            counter++;
         }
     }
 
-    return true;
+    return !isBad;
 }
 
 void printBuffer(uint64_t* buffer, size_t rank, hsize_t* dimensions, hsize_t* offset, hsize_t* size)

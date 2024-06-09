@@ -139,8 +139,30 @@ int main(void)
         .evictionStrategy = EvictionStrategy::FIFO,
         .bufferedRead = false,
     };
+        
+    Scenario t2 = {
+        .name = "Test",
+        .fileSpace = {
+            .offset = {0, 0},
+            .size = {16*1024, 16*1024},
+        },
+        .testSpace = {
+            .offset = {0, 0},
+            .size = {256, 256},
+        },
+        .accessPattern = AccessPattern::COHERENT_REGION_REPETITIVE,
+        .accessAmount = 12,
+        .repetitions = 1,
+        .datasetCount = 1,
+        .cacheShape = CacheShape::SQUARE,
+        .chunkSize = toValue(CacheChunkSize::SMALL),
+        .cacheLimit = 256*256*8*25/100,
+        .evictionStrategy = EvictionStrategy::FIFO,
+        .bufferedRead = true,
+    };
 
     //std::vector<Scenario> scenarios = {t1};
+    std::vector<Scenario> scenarios = {t2};
     //std::vector<Scenario> scenarios = {s2, s1};
     DataSpace fileSpace = {
         .offset = {0, 0},
@@ -150,7 +172,8 @@ int main(void)
         .offset = {0, 0},
         .size = {256, 256},
     };
-    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
+    
+    //std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
     //scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
@@ -163,7 +186,7 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
     CacheShape cacheShape = CacheShape::SQUARE;
     Layout layout = Layout::ALIGNED;
     CacheChunkSize chunkSize = CacheChunkSize::SMALL;
-    CacheLimit cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_9;
+    CacheLimit cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_25;
     EvictionStrategy evictionStrategy = EvictionStrategy::FIFO;
 
     std::vector<Scenario> scenarios;
@@ -197,7 +220,7 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                             continue;
                         }
 
-                        for (cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_2; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
+                        for (cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_25; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
                         {
                             for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
                             {
@@ -630,6 +653,43 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
             spaces.push_back(access);
         }
     }
+    else if (scenario.accessPattern == AccessPattern::COHERENT_REGION_REPETITIVE)
+    {
+        hsize_t offset[2]  = {scenario.testSpace.offset[0], scenario.testSpace.offset[1]};
+        int divisionSize = 4;
+        
+        for (int i = 0; i < std::min(scenario.accessAmount, divisionSize); i++) 
+        {
+            if (i > 0)
+            {
+                offset[1] += scenario.testSpace.size[1];
+                if (offset[1] + scenario.testSpace.size[1] > scenario.fileSpace.size[1])
+                {
+                    offset[1] = scenario.testSpace.offset[1];
+                    offset[0] += scenario.testSpace.size[0];
+                }
+            }
+
+            H5::DataSpace dataSpace = dataset.getSpace();
+            dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, offset);
+
+            H5::DataSpace memorySpace(2, memorySpaceSize);
+            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, scenario.testSpace.offset);
+
+            ProfiledReadAccess access = {
+                .memorySpace = memorySpace,
+                .dataSpace = dataSpace,
+                .datasetIndex = 0,
+            };
+        
+            spaces.push_back(access);
+        }
+
+        for (int i = divisionSize; i < scenario.accessAmount; i++) 
+        {
+            spaces.push_back(spaces[i % divisionSize]);
+        }        
+    }
     else if (scenario.accessPattern == AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL)
     {
         hsize_t offset[2]  = {scenario.testSpace.offset[0], scenario.testSpace.offset[1]};
@@ -713,10 +773,9 @@ uint64_t toValue(CacheLimit value, DataSpace dataSpace, int accessAmount)
 
     switch (value)
     {
-    case CacheLimit::TOO_LOW_FACTOR_0_2: return baseValue * 2 / 10;
-    case CacheLimit::TOO_LOW_FACTOR_0_9: return baseValue * 9 / 10;
-    case CacheLimit::ENOUGH_FACTOR_1: return baseValue * 1;
-    case CacheLimit::ENOUGH_FACTOR_5: return baseValue * 5;
+    case CacheLimit::TOO_LOW_FACTOR_0_25: return baseValue * 25 / 100;
+    case CacheLimit::TOO_LOW_FACTOR_0_34: return baseValue * 34 / 100;
+    case CacheLimit::ENOUGH_FACTOR_10: return baseValue * 10;
     default: return -1;
     }
 }
