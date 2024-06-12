@@ -32,6 +32,7 @@ const std::string toString(ReadType value)
 #define FOR_ALL_ACCESS_PATTERNS(apply) \
     apply(ALWAYS_THE_SAME) \
     apply(FULLY_RANDOM) \
+    apply(FULLY_RANDOM_LIMITED) \
     apply(RANDOM_PATTERN) \
     apply(BEYOND_DATASETS) \
     apply(COHERENT_REGION) \

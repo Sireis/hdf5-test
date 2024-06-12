@@ -11,6 +11,7 @@
 #include <fstream>
 
 #include "test.h"
+#include "pseudoRandom.h"
 #include "parameters.hpp"
 
 #define ENUM_STRINGIFY(enum, member) case enum::member: return #member;
@@ -26,6 +27,7 @@ struct DataSpace
 struct Scenario
 {
     std::string name;
+    std::string comment;
     DataSpace fileSpace;
     DataSpace testSpace;
     AccessPattern accessPattern;
@@ -79,6 +81,7 @@ int main(void)
 {    
     Scenario s1 = {
         .name = "Standard Line",
+        .comment = "",
         .fileSpace = {
             .offset = {0, 0},
             .size = {16*1024, 16*1024},
@@ -100,6 +103,7 @@ int main(void)
     
     Scenario s2 = {
         .name = "Standard Square",
+        .comment = "",
         .fileSpace = {
             .offset = {0, 0},
             .size = {16*1024, 16*1024},
@@ -121,6 +125,7 @@ int main(void)
     
     Scenario t1 = {
         .name = "Test",
+        .comment = "",
         .fileSpace = {
             .offset = {0, 0},
             .size = {8*1, 8*1},
@@ -142,6 +147,7 @@ int main(void)
         
     Scenario t2 = {
         .name = "Test",
+        .comment = "",
         .fileSpace = {
             .offset = {0, 0},
             .size = {16*1024, 16*1024},
@@ -162,7 +168,7 @@ int main(void)
     };
 
     //std::vector<Scenario> scenarios = {t1};
-    std::vector<Scenario> scenarios = {t2};
+    //std::vector<Scenario> scenarios = {t2};
     //std::vector<Scenario> scenarios = {s2, s1};
     DataSpace fileSpace = {
         .offset = {0, 0},
@@ -173,7 +179,7 @@ int main(void)
         .size = {256, 256},
     };
     
-    //std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
+    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
     //scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
@@ -193,7 +199,7 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
     Scenario s;
     for (readType = ReadType::UNBUFFERED_READ; readType < ReadType::COUNT; ++readType)
     {
-        for (accessPattern = AccessPattern::ALWAYS_THE_SAME; accessPattern < AccessPattern::COUNT; ++accessPattern)
+        for (accessPattern = AccessPattern::FULLY_RANDOM; accessPattern < AccessPattern::COHERENT_REGION; ++accessPattern)
         {
             for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
             {            
@@ -207,7 +213,9 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
 
                 for (layout = Layout::ALIGNED; layout < Layout::COUNT; ++layout)
                 {
-                    if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::RANDOM_PATTERN) 
+                    if ((accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::FULLY_RANDOM_LIMITED
+                    || accessPattern == AccessPattern::RANDOM_PATTERN 
+                    || accessPattern == AccessPattern::BEYOND_DATASETS) 
                     && layout != Layout::OFFSET)
                     {
                         continue;
@@ -223,12 +231,12 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                         for (cacheLimit = CacheLimit::TOO_LOW_FACTOR_0_25; cacheLimit < CacheLimit::COUNT; ++cacheLimit)
                         {
                             for (evictionStrategy = EvictionStrategy::FIFO; evictionStrategy < EvictionStrategy::COUNT; ++evictionStrategy)
-                            {
-
+                            {     
                                 s = {
                                     .name = toString(readType) + "-" + toString(accessPattern) + "-" + toString(cacheShape) + "-" 
                                         + toString(layout) + "-" + toString(chunkSize) + "-" + toString(cacheLimit) + "-" 
                                         + toString(evictionStrategy),
+                                    .comment = "",
                                     //.name = toString(cacheShape) 
                                     //    + "::" + toString(chunkSize) + "::" + toString(cacheLimit) + "::" + toString(evictionStrategy),
                                     .fileSpace = fileSpace,
@@ -245,6 +253,13 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
                                 };
 
                                 scenarios.push_back(s);
+
+                                if (accessPattern == AccessPattern::FULLY_RANDOM || accessPattern == AccessPattern::FULLY_RANDOM_LIMITED || accessPattern == AccessPattern::RANDOM_PATTERN || accessPattern == AccessPattern::BEYOND_DATASETS)
+                                {
+                                    s.accessAmount = s.accessAmount * 3;
+                                    s.comment = "-more";
+                                    scenarios.push_back(s);
+                                }
                             }
                         }
                     }
@@ -271,7 +286,7 @@ void runScenarios(std::vector<Scenario> scenarios, bool isSilent)
 
 void runScenario(Scenario scenario, bool isSilent)
 {
-    std::cout << "Profiling scenario " << scenario.name << "..." << std::endl;
+    std::cout << "Profiling scenario " << scenario.name << scenario.comment << "..." << std::endl;
     auto start = steady_clock::now();
 
     setenv("STAGING_CACHE_SHAPE", toString(scenario.cacheShape).c_str(), 1);
@@ -349,7 +364,7 @@ void runScenario(Scenario scenario, bool isSilent)
     char* basePathString = std::getenv("HOME");
     std::filesystem::path basePath(basePathString);
     std::filesystem::path path = basePath / "results";
-    saveToFileAsDat(path.string(), profileResult.durations, scenario.name);
+    saveToFileAsDat(path.string(), profileResult.durations, scenario.name + scenario.comment);
 
     auto end = steady_clock::now();
     auto duration = duration_cast<milliseconds>(end - start);
@@ -548,9 +563,35 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
     }
     else if (scenario.accessPattern == AccessPattern::FULLY_RANDOM)
     {
+        resetPseudodRandomGenerator();
         for (int i = 0; i < scenario.accessAmount; i++)
         {
-            hsize_t randomOffset[2] = {rand() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), rand() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
+            hsize_t randomOffset[2] = {getPseudoRandomNumber() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), getPseudoRandomNumber() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
+            hsize_t noOffset[2] = {0, 0};
+
+            H5::DataSpace dataSpace = dataset.getSpace();
+            dataSpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, randomOffset);
+
+            H5::DataSpace memorySpace(2, memorySpaceSize);
+            memorySpace.selectHyperslab(H5S_SELECT_SET, scenario.testSpace.size, noOffset);
+            
+            ProfiledReadAccess access = {
+                .memorySpace = memorySpace,
+                .dataSpace = dataSpace,
+                .datasetIndex = 0,
+            };
+
+            spaces.push_back(access);
+        }
+    }
+    else if (scenario.accessPattern == AccessPattern::FULLY_RANDOM_LIMITED)
+    {
+        resetPseudodRandomGenerator();
+        for (int i = 0; i < scenario.accessAmount; i++)
+        {
+            hsize_t yRange = (scenario.fileSpace.size[0] - scenario.testSpace.size[0]) / 10;
+            hsize_t xRange = (scenario.fileSpace.size[1] - scenario.testSpace.size[1]) / 10;
+            hsize_t randomOffset[2] = {getPseudoRandomNumber() % yRange, getPseudoRandomNumber() % xRange};
             hsize_t noOffset[2] = {0, 0};
 
             H5::DataSpace dataSpace = dataset.getSpace();
@@ -570,9 +611,10 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
     }
     else if (scenario.accessPattern == AccessPattern::RANDOM_PATTERN)
     {
+        resetPseudodRandomGenerator();
         for (int i = 0; i < scenario.accessAmount; i++)
         {
-            hsize_t randomOffset[2] = {rand() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), rand() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
+            hsize_t randomOffset[2] = {getPseudoRandomNumber() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), getPseudoRandomNumber() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
             hsize_t noOffset[2] = {0, 0};
 
             H5::DataSpace dataSpace = dataset.getSpace();
@@ -592,12 +634,15 @@ std::vector<ProfiledReadAccess> createAccesses(Scenario scenario, H5::DataSet &d
     }
     else if (scenario.accessPattern == AccessPattern::BEYOND_DATASETS)
     {
+        resetPseudodRandomGenerator();
         int accessCounter = 0;
         int currentDatasetIndex = 0;
         int totalAccessesEachDataset = scenario.accessAmount / scenario.datasetCount;
         for (int i = 0; i < scenario.accessAmount; i++)
         {
-            hsize_t randomOffset[2] = {rand() % (scenario.fileSpace.size[0] - scenario.testSpace.size[0]), rand() % (scenario.fileSpace.size[1] - scenario.testSpace.size[1])};
+            hsize_t yRange = (scenario.fileSpace.size[0] - scenario.testSpace.size[0]) / 10;
+            hsize_t xRange = (scenario.fileSpace.size[1] - scenario.testSpace.size[1]) / 10;
+            hsize_t randomOffset[2] = {getPseudoRandomNumber() % yRange, getPseudoRandomNumber() % xRange};
             hsize_t noOffset[2] = {0, 0};
 
             H5::DataSpace dataSpace = dataset.getSpace();
