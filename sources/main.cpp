@@ -180,7 +180,7 @@ int main(void)
     };
     
     std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
-    //scrambleScenarios(scenarios);
+    scrambleScenarios(scenarios);
 
     runScenarios(scenarios, true);
 }
