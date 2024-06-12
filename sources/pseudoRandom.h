@@ -206,7 +206,7 @@ int pseudoRandomList[] = {
 int pseudoRandomListLength = 400;
 int pseudoRandomListIndex = 0;
 
-int resetPseudodRandomGenerator()
+void resetPseudodRandomGenerator()
 {
     pseudoRandomListIndex = 0;
 }
