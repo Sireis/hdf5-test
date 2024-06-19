@@ -172,11 +172,11 @@ int main(void)
     //std::vector<Scenario> scenarios = {s2, s1};
     DataSpace fileSpace = {
         .offset = {0, 0},
-        .size = {16*1024, 16*1024},
+        .size = {64*1024, 64*1024},
     };
     DataSpace testSpace = {
         .offset = {0, 0},
-        .size = {256, 256},
+        .size = {1024, 1024},
     };
     
     std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
