@@ -199,7 +199,7 @@ std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace t
     Scenario s;
     for (readType = ReadType::UNBUFFERED_READ; readType < ReadType::COUNT; ++readType)
     {
-        for (accessPattern = AccessPattern::FULLY_RANDOM; accessPattern < AccessPattern::COHERENT_REGION; ++accessPattern)
+        for (accessPattern = AccessPattern::ALWAYS_THE_SAME; accessPattern < AccessPattern::COUNT; ++accessPattern)
         {
             for (cacheShape = CacheShape::SQUARE; cacheShape < CacheShape::COUNT; ++cacheShape)
             {            
