@@ -55,7 +55,7 @@ struct ProfiledReadAccess
 };
 
 void runScenario(Scenario scenario, bool isSilent);
-void runScenarios(std::vector<Scenario> scenarios, bool isSilent);
+void runScenarios(std::vector<Scenario> scenarios, int start, int end);
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount);
 void scrambleScenarios(std::vector<Scenario> &scenarios);
 void profiledRead(uint8_t buffer[], std::vector<H5::DataSet> &dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces, ProfileResult* profileResult);
@@ -77,8 +77,18 @@ uint64_t toValue(CacheLimit value, DataSpace dataSpace, int accessAmount);
 int toValue(AccessPattern pattern);
 DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, const CacheChunkSize &chunkSize);
 
-int main(void)
+int main(int argc, char* argv[])
 {    
+    int start = 0;
+    int end = 2000;
+    if (argc >= 3) {
+        start = std::atoi(argv[1]);
+        end = std::atoi(argv[2]);
+    } else {
+        std::cout << "Insufficient command line arguments." << std::endl;
+        return 1;
+    }
+
     Scenario s1 = {
         .name = "Standard Line",
         .comment = "",
@@ -180,9 +190,9 @@ int main(void)
     };
     
     std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
-    scrambleScenarios(scenarios);
+    //scrambleScenarios(scenarios);
 
-    runScenarios(scenarios, true);
+    runScenarios(scenarios, start, end);
 }
 
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount)
@@ -276,12 +286,15 @@ void scrambleScenarios(std::vector<Scenario> &scenarios)
     std::random_shuffle(scenarios.begin(), scenarios.end());
 }
 
-void runScenarios(std::vector<Scenario> scenarios, bool isSilent)
+void runScenarios(std::vector<Scenario> scenarios, int start, int end)
 {
-    for (Scenario s : scenarios)
+    end = std::min((int)scenarios.size(), end);
+    for (int i = start; i < end; i++)
     {
-        runScenario(s, isSilent);
-    }    
+        std::cout << "(" << i + 1 << "/" << scenarios.size() << ") ";
+        Scenario scenario = scenarios[i];
+        runScenario(scenario, true);
+    }
 }
 
 void runScenario(Scenario scenario, bool isSilent)
