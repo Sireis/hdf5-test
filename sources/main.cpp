@@ -57,6 +57,7 @@ struct ProfiledReadAccess
 void runScenario(Scenario scenario, bool isSilent);
 void runScenarios(std::vector<Scenario> scenarios, int start, int end);
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount);
+std::vector<Scenario> createSelectedScenarios(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount);
 void scrambleScenarios(std::vector<Scenario> &scenarios);
 void profiledRead(uint8_t buffer[], std::vector<H5::DataSet> &dataset, H5::DataType dataType, std::vector<ProfiledReadAccess> &spaces, ProfileResult* profileResult);
 void printAsCSV(uint8_t buffer[], size_t size);
@@ -76,6 +77,7 @@ int toValue(CacheChunkSize value);
 uint64_t toValue(CacheLimit value, DataSpace dataSpace, int accessAmount);
 int toValue(AccessPattern pattern);
 DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, const CacheChunkSize &chunkSize);
+Scenario makeScenario(ReadType readType, AccessPattern accessPattern, CacheShape cacheShape, Layout layout, CacheChunkSize chunkSize, CacheLimit cacheLimit, EvictionStrategy evictionStrategy, DataSpace fileSpace, DataSpace testSpace, int repetition, int accessAmount);
 
 int main(int argc, char* argv[])
 {    
@@ -189,10 +191,163 @@ int main(int argc, char* argv[])
         .size = {1024, 1024},
     };
     
-    std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
+    //std::vector<Scenario> scenarios = createScenarioPermutation(fileSpace, testSpace, 4, 12);
+    std::vector<Scenario> scenarios = createSelectedScenarios(fileSpace, testSpace, 4, 12);
     //scrambleScenarios(scenarios);
 
     runScenarios(scenarios, start, end);
+}
+
+std::vector<Scenario> createSelectedScenarios(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount)
+{
+    std::vector<Scenario> scenarios;
+
+    Scenario s;
+
+    // Abbildung 27
+    s = makeScenario(ReadType::BUFFERED_READ,
+                     AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL,
+                     CacheShape::SQUARE,
+                     Layout::ALIGNED,
+                     CacheChunkSize::SMALL,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                    );
+    scenarios.push_back(s);
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    
+    s = makeScenario(ReadType::UNBUFFERED_READ,
+                     AccessPattern::COHERENT_REGION_UNFAVOURABLE_TRAVERSAL,
+                     CacheShape::LINE,
+                     Layout::ALIGNED,
+                     CacheChunkSize::LARGE,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                    );
+    scenarios.push_back(s);
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+
+    // Abbildung 28
+    s = makeScenario(ReadType::BUFFERED_READ,
+                     AccessPattern::FULLY_RANDOM,
+                     CacheShape::SQUARE,
+                     Layout::OFFSET,
+                     CacheChunkSize::SMALL,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                     );
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    s.name = s.name.substr(0, s.name.size() - 2);
+    scenarios.push_back(s);    
+
+    s = makeScenario(ReadType::BUFFERED_READ,
+                     AccessPattern::FULLY_RANDOM,
+                     CacheShape::LINE,
+                     Layout::OFFSET,
+                     CacheChunkSize::LARGE,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                    );
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    s.name = s.name.substr(0, s.name.size() - 2);
+    scenarios.push_back(s);
+
+    // Abbildung 29
+    s = makeScenario(ReadType::BUFFERED_READ,
+                     AccessPattern::RANDOM_PATTERN,
+                     CacheShape::SQUARE,
+                     Layout::OFFSET,
+                     CacheChunkSize::SMALL,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                     );
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    s.name = s.name.substr(0, s.name.size() - 2);
+    scenarios.push_back(s);    
+
+    s = makeScenario(ReadType::BUFFERED_READ,
+                     AccessPattern::RANDOM_PATTERN,
+                     CacheShape::LINE,
+                     Layout::OFFSET,
+                     CacheChunkSize::LARGE,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                    );
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    s.name = s.name.substr(0, s.name.size() - 2);
+    scenarios.push_back(s);
+
+    // Abbildung 30
+    s = makeScenario(ReadType::UNBUFFERED_READ,
+                     AccessPattern::RANDOM_PATTERN,
+                     CacheShape::SQUARE,
+                     Layout::OFFSET,
+                     CacheChunkSize::MEDIUM,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                     );
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    s.name = s.name.substr(0, s.name.size() - 2);
+    scenarios.push_back(s);    
+
+    s = makeScenario(ReadType::UNBUFFERED_READ,
+                     AccessPattern::RANDOM_PATTERN,
+                     CacheShape::SQUARE,
+                     Layout::OFFSET,
+                     CacheChunkSize::LARGE,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                    );
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    s.name = s.name.substr(0, s.name.size() - 2);
+    scenarios.push_back(s);
+
+    // Abbildung 31
+    s = makeScenario(ReadType::BUFFERED_READ,
+                     AccessPattern::BEYOND_DATASETS,
+                     CacheShape::SQUARE,
+                     Layout::OFFSET,
+                     CacheChunkSize::SMALL,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                     );
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    s.name = s.name.substr(0, s.name.size() - 2);
+    scenarios.push_back(s);    
+
+    s = makeScenario(ReadType::BUFFERED_READ,
+                     AccessPattern::BEYOND_DATASETS,
+                     CacheShape::LINE,
+                     Layout::OFFSET,
+                     CacheChunkSize::LARGE,
+                     CacheLimit::ENOUGH_FACTOR_10,
+                     EvictionStrategy::LRU,
+                     fileSpace, testSpace, repetitions, accessAmount
+                    );
+    s.name = s.name + "-2";
+    scenarios.push_back(s);
+    s.name = s.name.substr(0, s.name.size() - 2);
+    scenarios.push_back(s);
+
+    return scenarios;
 }
 
 std::vector<Scenario> createScenarioPermutation(DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount)
@@ -886,4 +1041,27 @@ DataSpace createDataSpace(const DataSpace &baseDataSpace, const Layout &layout, 
     }
     
     return newSpace;
+}
+
+Scenario makeScenario(ReadType readType, AccessPattern accessPattern, CacheShape cacheShape, Layout layout, CacheChunkSize chunkSize, CacheLimit cacheLimit, EvictionStrategy evictionStrategy, DataSpace fileSpace, DataSpace testSpace, int repetitions, int accessAmount)
+{    
+    Scenario s = {
+        .name = toString(readType) + "-" + toString(accessPattern) + "-" + toString(cacheShape) + "-" 
+            + toString(layout) + "-" + toString(chunkSize) + "-" + toString(cacheLimit) + "-" 
+            + toString(evictionStrategy),
+        .comment = "",
+        .fileSpace = fileSpace,
+        .testSpace = createDataSpace(testSpace, layout, chunkSize),
+        .accessPattern = accessPattern,
+        .accessAmount = accessAmount,
+        .repetitions = repetitions,
+        .datasetCount = toValue(accessPattern),
+        .cacheShape = cacheShape,
+        .chunkSize = toValue(chunkSize),
+        .cacheLimit = toValue(cacheLimit, testSpace, accessAmount),
+        .evictionStrategy = evictionStrategy,
+        .bufferedRead = readType == ReadType::BUFFERED_READ,
+    };
+
+    return s;
 }
